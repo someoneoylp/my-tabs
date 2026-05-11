@@ -17,7 +17,6 @@ let state = {
     disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
   },
   selectedTabIds: new Set(),
-  toast: null,
   confirm: null
 };
 
@@ -26,7 +25,7 @@ function escapeHtml(value) {
 }
 
 async function loadTabs() {
-  state = { ...state, status: 'loading', toast: null, confirm: null, selectedTabIds: new Set() };
+  state = { ...state, status: 'loading', confirm: null, selectedTabIds: new Set() };
   render();
   try {
     const [tabs, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getSettings()]);
@@ -214,7 +213,7 @@ function renderConfirmDialog() {
       <section class="confirm-dialog">
         <p class="eyebrow">${escapeHtml(state.confirm.label)}</p>
         <h2>确认关闭 ${tabs.length} 个 Tab？</h2>
-        <p class="subtitle">此操作不会影响置顶 Tab。将尝试恢复已关闭 Tab，页面状态可能无法完全恢复。</p>
+        <p class="subtitle">此操作不会影响置顶 Tab。关闭后页面会重新分析当前列表。</p>
         <div class="confirm-list">
           ${tabs.map(tab => `<div class="confirm-item"><strong>${escapeHtml(tab.title)}</strong><br><span class="muted">${escapeHtml(getDomain(tab.url))} · 将执行：关闭</span></div>`).join('')}
         </div>
@@ -227,12 +226,6 @@ function renderConfirmDialog() {
   `;
 }
 
-function renderToast() {
-  if (!state.toast) return '';
-  const undo = actionManager.canUndo() ? '<button data-action="undo">撤销</button>' : '';
-  return `<div class="toast"><span>${escapeHtml(state.toast)}</span>${undo}</div>`;
-}
-
 function render() {
   if (state.status === 'loading') {
     app.innerHTML = '<section class="loading-card"><p class="eyebrow">AI Tab Manager</p><h1>正在分析当前 Tab…</h1><p>正在按域名整理 Tab，置顶页面不会进入统计。</p></section>';
@@ -243,7 +236,7 @@ function render() {
     return;
   }
   const groups = visibleDomainGroups();
-  app.innerHTML = `${renderHeader()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderConfirmDialog()}${renderToast()}`;
+  app.innerHTML = `${renderHeader()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderConfirmDialog()}`;
 }
 
 async function changeInactiveDays(days) {
@@ -258,8 +251,7 @@ async function changeAutoGroupingEnabled(enabled) {
   await browserApi.saveSettings({ autoGroupingEnabled });
   state = {
     ...state,
-    settings: { ...state.settings, autoGroupingEnabled },
-    toast: autoGroupingEnabled ? '已开启自动匹配' : '已暂停自动匹配'
+    settings: { ...state.settings, autoGroupingEnabled }
   };
   render();
 }
@@ -269,8 +261,7 @@ async function changeDomainAutoGrouping(domain, enabled) {
   await browserApi.saveSettings({ disabledAutoGroupDomains });
   state = {
     ...state,
-    settings: { ...state.settings, disabledAutoGroupDomains },
-    toast: enabled ? `已开启 ${domain} 自动匹配` : `已暂停 ${domain} 自动匹配`
+    settings: { ...state.settings, disabledAutoGroupDomains }
   };
   render();
 }
@@ -279,7 +270,7 @@ async function saveGroupingRules() {
   const textarea = app.querySelector('[data-setting="grouping-rules"]');
   const groupingRulesText = textarea?.value || '';
   await browserApi.saveSettings({ groupingRulesText });
-  state = { ...state, settings: { ...state.settings, groupingRulesText }, toast: '自动归档规则已保存' };
+  state = { ...state, settings: { ...state.settings, groupingRulesText } };
   render();
 }
 
@@ -302,7 +293,7 @@ function requestCloseTabIds(tabIds, label) {
     return tab && !tab.pinned;
   });
   if (safeIds.length === 0) {
-    state = { ...state, toast: '当前没有可清理的非置顶 Tab' };
+    state = { ...state, confirm: null };
     render();
     return;
   }
@@ -336,19 +327,9 @@ function requestClearOne(tabId) {
 
 async function confirmClose() {
   const tabs = state.confirm.tabIds.map(tabById).filter(Boolean);
-  const result = await actionManager.closeTabs(tabs, state.confirm.label);
-  const message = `已关闭 ${result.closed} 个 Tab`;
-  state = { ...state, confirm: null, selectedTabIds: new Set(), toast: message };
+  await actionManager.closeTabs(tabs, state.confirm.label);
+  state = { ...state, confirm: null, selectedTabIds: new Set() };
   await loadTabs();
-  state = { ...state, toast: message };
-  render();
-}
-
-async function undo() {
-  const result = await actionManager.undoLastAction();
-  state = { ...state, toast: result.message };
-  await loadTabs();
-  state = { ...state, toast: result.message };
   render();
 }
 
@@ -366,7 +347,6 @@ app.addEventListener('click', async event => {
   if (action === 'clear-one') requestClearOne(Number(target.dataset.tabId));
   if (action === 'cancel-confirm') { state = { ...state, confirm: null }; render(); }
   if (action === 'confirm-close') await confirmClose();
-  if (action === 'undo') await undo();
 });
 
 app.addEventListener('change', async event => {

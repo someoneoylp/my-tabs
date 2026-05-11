@@ -592,29 +592,6 @@ h1 {
   color: var(--muted);
 }
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 16px;
-  border-radius: 999px;
-  background: rgba(24, 32, 47, 0.92);
-  color: white;
-  font-size: 14px;
-}
-
-.toast button {
-  color: white;
-  background: transparent;
-  border: 0;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
 @media (max-width: 980px) {
   .page-header,
   .groups-section,
