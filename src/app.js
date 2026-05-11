@@ -1,0 +1,341 @@
+import { analyzeTabs, getDomain, getDomainGroups } from './analyzer.js';
+import { browserApi } from './browserApi.js';
+import { createActionManager } from './actions.js';
+import { DEFAULT_RULES_TEXT } from './defaultRules.js';
+
+const app = document.querySelector('#app');
+const actionManager = createActionManager(browserApi);
+let state = {
+  status: 'loading',
+  tabs: [],
+  analysis: null,
+  settings: { inactiveDays: 3, groupingRulesText: DEFAULT_RULES_TEXT },
+  selectedTabIds: new Set(),
+  toast: null,
+  confirm: null
+};
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
+}
+
+async function loadTabs() {
+  state = { ...state, status: 'loading', toast: null, confirm: null, selectedTabIds: new Set() };
+  render();
+  try {
+    const [tabs, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getSettings()]);
+    const inactiveThresholdMs = settings.inactiveDays * 24 * 60 * 60 * 1000;
+    state = { ...state, status: 'ready', tabs, settings, analysis: analyzeTabs(tabs, { inactiveThresholdMs }) };
+  } catch (error) {
+    state = { ...state, status: 'error', error: error?.message || '无法读取 Tab' };
+  }
+  render();
+}
+
+function formatTime(iso) {
+  return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function tabById(id) {
+  return state.tabs.find(tab => tab.id === Number(id));
+}
+
+function nonPinnedTabs() {
+  return state.tabs.filter(tab => !tab.pinned);
+}
+
+function visibleDomainGroups() {
+  return getDomainGroups(state.tabs)
+    .map(group => ({ ...group, tabs: group.tabs.filter(tab => !tab.pinned) }))
+    .filter(group => group.tabs.length > 0);
+}
+
+function inactiveIdSet() {
+  return new Set(state.analysis.inactiveTabs.map(tab => tab.id));
+}
+
+function duplicateCloseIdsForDomain(domain) {
+  const closeIds = [];
+  for (const duplicateGroup of state.analysis.duplicateGroups) {
+    const sameDomainTabs = duplicateGroup.tabs.filter(tab => !tab.pinned && getDomain(tab.url) === domain);
+    if (sameDomainTabs.length <= 1) continue;
+    closeIds.push(...sameDomainTabs.slice(1).map(tab => tab.id));
+  }
+  return [...new Set(closeIds)];
+}
+
+function selectedCountForGroup(group) {
+  return group.tabs.filter(tab => state.selectedTabIds.has(tab.id)).length;
+}
+
+function renderHeader() {
+  const groups = visibleDomainGroups();
+  const cleanableCount = groups.reduce((sum, group) => sum + group.tabs.length, 0);
+  return `
+    <header class="page-header">
+      <div class="top-bar">
+        <p class="brand">AI Tab Manager</p>
+        <div class="header-controls">
+          <label class="inactive-pill">
+            <span></span>
+            <select data-setting="inactive-days" aria-label="长时间未打开">
+              ${[1, 3, 7, 14].map(days => `<option value="${days}" ${state.settings.inactiveDays === days ? 'selected' : ''}>${days} 天未打开</option>`).join('')}
+            </select>
+          </label>
+          <button class="btn primary" data-action="reload">重新分析</button>
+        </div>
+      </div>
+
+      <section class="hero">
+        <h1>My tabs</h1>
+        <p>当前 ${nonPinnedTabs().length} 个非置顶 Tab，按 ${groups.length} 个域名整理；${cleanableCount} 个可清理，置顶已排除 · ${formatTime(state.analysis.snapshotTime)}</p>
+      </section>
+    </header>
+  `;
+}
+
+function renderRulesPanel() {
+  return `
+    <section class="rules-section">
+      <p class="section-label">Auto-archive rules</p>
+      <div class="rules-card">
+        <div class="rules-card-header">
+          <div class="rules-title">
+            <span class="rules-icon">≡</span>
+            <strong>Grouping rules</strong>
+          </div>
+          <button class="link-button" data-action="save-grouping-rules">Save</button>
+        </div>
+        <div class="rules-grid">
+          <label>
+            <span>Group name / URL keyword</span>
+            <textarea data-setting="grouping-rules" spellcheck="false" placeholder="One rule per line&#10;e.g. inbox&#10;github">${escapeHtml(state.settings.groupingRulesText)}</textarea>
+          </label>
+          <label>
+            <span>Example</span>
+            <pre>email
+飞书文档/bytedance.larkoffice.com</pre>
+          </label>
+        </div>
+        <p class="rules-help">Title match takes priority over URL. URL keyword can be left blank.</p>
+      </div>
+    </section>
+  `;
+}
+
+function renderDomainGrid(groups) {
+  if (groups.length === 0) {
+    return '<section class="empty-board">没有可管理的非置顶 Tab。</section>';
+  }
+  const selectedTotal = state.selectedTabIds.size;
+  return `
+    <section class="groups-section">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Tab groups</p>
+          <h2>按域名清理</h2>
+        </div>
+        <div class="batch-actions">
+          <span>${selectedTotal ? `已选 ${selectedTotal} 个` : '勾选后可批量清理'}</span>
+          <button class="btn danger ghost" data-action="clear-selected-all" ${selectedTotal === 0 ? 'disabled' : ''}>清理已选</button>
+        </div>
+      </div>
+      <div class="card-grid">
+        ${groups.map(group => renderDomainCard(group)).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderDomainCard(group) {
+  const duplicateCount = duplicateCloseIdsForDomain(group.domain).length;
+  const selectedCount = selectedCountForGroup(group);
+  return `
+    <article class="mini-card">
+      <div class="mini-card-header">
+        <div class="domain-mark">${escapeHtml(group.domain.slice(0, 1).toUpperCase())}</div>
+        <div class="domain-copy">
+          <h2>${escapeHtml(group.domain)}</h2>
+          <p>${group.tabs.length} 个 Tab · ${duplicateCount} 个重复${selectedCount ? ` · 已选 ${selectedCount}` : ''}</p>
+        </div>
+        <div class="card-actions">
+          <button class="link-button" data-action="clear-duplicates" data-domain="${escapeHtml(group.domain)}" ${duplicateCount === 0 ? 'disabled' : ''}>重复</button>
+          <button class="link-button danger" data-action="clear-domain" data-domain="${escapeHtml(group.domain)}">全部</button>
+        </div>
+      </div>
+
+      <div class="url-stack">
+        ${group.tabs.map(tab => renderUrlChip(tab, group.domain)).join('')}
+      </div>
+    </article>
+  `;
+}
+
+function renderUrlChip(tab, domain) {
+  const inactiveIds = inactiveIdSet();
+  const checked = state.selectedTabIds.has(tab.id) ? 'checked' : '';
+  const badges = [
+    inactiveIds.has(tab.id) ? `<span class="badge">${state.settings.inactiveDays} 天未打开</span>` : '',
+    tab.active ? '<span class="badge">当前</span>' : ''
+  ].filter(Boolean).join('');
+  return `
+    <div class="url-chip">
+      <input type="checkbox" data-action="toggle-tab" data-tab-id="${tab.id}" ${checked} />
+      <div class="url-chip-main">
+        <div class="url-chip-title">${escapeHtml(tab.title)}</div>
+        <div class="url-chip-url">${escapeHtml(tab.url)}</div>
+        <div class="url-badges">${badges || '<span class="badge">可清理</span>'}</div>
+      </div>
+      <button class="icon-clean" title="单独清理" data-action="clear-one" data-domain="${escapeHtml(domain)}" data-tab-id="${tab.id}">关闭</button>
+    </div>
+  `;
+}
+
+function renderConfirmDialog() {
+  if (!state.confirm) return '';
+  const tabs = state.confirm.tabIds.map(tabById).filter(Boolean);
+  return `
+    <div class="confirm-backdrop">
+      <section class="confirm-dialog">
+        <p class="eyebrow">${escapeHtml(state.confirm.label)}</p>
+        <h2>确认关闭 ${tabs.length} 个 Tab？</h2>
+        <p class="subtitle">此操作不会影响置顶 Tab。将尝试恢复已关闭 Tab，页面状态可能无法完全恢复。</p>
+        <div class="confirm-list">
+          ${tabs.map(tab => `<div class="confirm-item"><strong>${escapeHtml(tab.title)}</strong><br><span class="muted">${escapeHtml(getDomain(tab.url))} · 将执行：关闭</span></div>`).join('')}
+        </div>
+        <div class="actions">
+          <button class="btn" data-action="cancel-confirm">取消</button>
+          <button class="btn danger" data-action="confirm-close">确认关闭</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderToast() {
+  if (!state.toast) return '';
+  const undo = actionManager.canUndo() ? '<button data-action="undo">撤销</button>' : '';
+  return `<div class="toast"><span>${escapeHtml(state.toast)}</span>${undo}</div>`;
+}
+
+function render() {
+  if (state.status === 'loading') {
+    app.innerHTML = '<section class="loading-card"><p class="eyebrow">AI Tab Manager</p><h1>正在分析当前 Tab…</h1><p>正在按域名整理 Tab，置顶页面不会进入统计。</p></section>';
+    return;
+  }
+  if (state.status === 'error') {
+    app.innerHTML = `<section class="error-card"><h1>无法读取 Tab</h1><p>${escapeHtml(state.error)}</p><button class="btn" data-action="reload">重试</button></section>`;
+    return;
+  }
+  const groups = visibleDomainGroups();
+  app.innerHTML = `${renderHeader()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderConfirmDialog()}${renderToast()}`;
+}
+
+async function changeInactiveDays(days) {
+  const inactiveDays = Number(days) || 3;
+  await browserApi.saveSettings({ inactiveDays });
+  state = { ...state, settings: { ...state.settings, inactiveDays } };
+  await loadTabs();
+}
+
+async function saveGroupingRules() {
+  const textarea = app.querySelector('[data-setting="grouping-rules"]');
+  const groupingRulesText = textarea?.value || '';
+  await browserApi.saveSettings({ groupingRulesText });
+  state = { ...state, settings: { ...state.settings, groupingRulesText }, toast: '自动归档规则已保存' };
+  render();
+}
+
+function groupByDomain(domain) {
+  return visibleDomainGroups().find(group => group.domain === domain);
+}
+
+function toggleTab(tabId) {
+  const tab = tabById(tabId);
+  if (!tab || tab.pinned) return;
+  const next = new Set(state.selectedTabIds);
+  if (next.has(tab.id)) next.delete(tab.id); else next.add(tab.id);
+  state = { ...state, selectedTabIds: next };
+  render();
+}
+
+function requestCloseTabIds(tabIds, label) {
+  const safeIds = tabIds.filter(id => {
+    const tab = tabById(id);
+    return tab && !tab.pinned;
+  });
+  if (safeIds.length === 0) {
+    state = { ...state, toast: '当前没有可清理的非置顶 Tab' };
+    render();
+    return;
+  }
+  state = { ...state, confirm: { tabIds: safeIds, label } };
+  render();
+}
+
+function requestClearDomain(domain) {
+  const group = groupByDomain(domain);
+  requestCloseTabIds(group.tabs.map(tab => tab.id), `清理 ${domain} 下的全部非置顶 Tab`);
+}
+
+function requestClearDuplicates(domain) {
+  requestCloseTabIds(duplicateCloseIdsForDomain(domain), `清理 ${domain} 下的重复 Tab，并保留每组 1 个`);
+}
+
+function requestClearSelectedDomain(domain) {
+  const group = groupByDomain(domain);
+  const selectedIds = group.tabs.map(tab => tab.id).filter(id => state.selectedTabIds.has(id));
+  requestCloseTabIds(selectedIds, `清理 ${domain} 下已选 ${selectedIds.length} 个 Tab`);
+}
+
+function requestClearSelectedAll() {
+  requestCloseTabIds([...state.selectedTabIds], `批量清理已选 ${state.selectedTabIds.size} 个 Tab`);
+}
+
+function requestClearOne(tabId) {
+  const tab = tabById(tabId);
+  requestCloseTabIds([Number(tabId)], `单独清理「${tab?.title || 'Tab'}」`);
+}
+
+async function confirmClose() {
+  const tabs = state.confirm.tabIds.map(tabById).filter(Boolean);
+  const result = await actionManager.closeTabs(tabs, state.confirm.label);
+  const message = `已关闭 ${result.closed} 个 Tab`;
+  state = { ...state, confirm: null, selectedTabIds: new Set(), toast: message };
+  await loadTabs();
+  state = { ...state, toast: message };
+  render();
+}
+
+async function undo() {
+  const result = await actionManager.undoLastAction();
+  state = { ...state, toast: result.message };
+  await loadTabs();
+  state = { ...state, toast: result.message };
+  render();
+}
+
+app.addEventListener('click', async event => {
+  const target = event.target.closest('[data-action]');
+  if (!target) return;
+  const action = target.dataset.action;
+  if (action === 'reload') await loadTabs();
+  if (action === 'save-grouping-rules') await saveGroupingRules();
+  if (action === 'toggle-tab') toggleTab(Number(target.dataset.tabId));
+  if (action === 'clear-domain') requestClearDomain(target.dataset.domain);
+  if (action === 'clear-duplicates') requestClearDuplicates(target.dataset.domain);
+  if (action === 'clear-selected-domain') requestClearSelectedDomain(target.dataset.domain);
+  if (action === 'clear-selected-all') requestClearSelectedAll();
+  if (action === 'clear-one') requestClearOne(Number(target.dataset.tabId));
+  if (action === 'cancel-confirm') { state = { ...state, confirm: null }; render(); }
+  if (action === 'confirm-close') await confirmClose();
+  if (action === 'undo') await undo();
+});
+
+app.addEventListener('change', async event => {
+  const target = event.target.closest('[data-setting]');
+  if (!target) return;
+  if (target.dataset.setting === 'inactive-days') await changeInactiveDays(target.value);
+});
+
+loadTabs();

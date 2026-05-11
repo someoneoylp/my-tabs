@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "AI Tab Manager",
+  "version": "0.1.0",
+  "description": "AI-assisted suggestion mode for safer Chrome tab cleanup.",
+  "permissions": ["tabs", "storage", "tabGroups"],
+  "action": {
+    "default_title": "Open AI Tab Manager"
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "chrome_url_overrides": {
+    "newtab": "src/manager.html"
+  }
+}

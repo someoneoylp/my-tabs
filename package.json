@@ -1,0 +1,10 @@
+{
+  "name": "ai-tab-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/analyzer.js && node --check src/actions.js && node --check src/groupingRules.js && node --check src/tabGrouper.js && node --check src/app.js && node --check src/browserApi.js && node --check src/background.js"
+  }
+}
