@@ -229,3 +229,25 @@ test('groupTabByRules prefers separator-split title group over ai URL rule', asy
   assert.equal(result.groupTitle, '服务商&商家工作台');
   assert.deepEqual(calls, [['groupTabs', [1], 21]]);
 });
+
+test('groupTabByRules treats ampersand group title parts as independent title keywords', async () => {
+  const calls = [];
+  const api = {
+    queryTabs: async () => [
+      { id: 2, title: '商家旧页', groupId: 21 },
+      { id: 3, title: 'AI Home', groupId: 13 }
+    ],
+    getGroup: async groupId => ({ id: groupId, title: groupId === 21 ? '服务商&商家工作台' : 'ai' }),
+    groupTabs: async ({ tabIds, groupId }) => calls.push(['groupTabs', tabIds, groupId]),
+    updateGroup: async () => calls.push(['updateGroup'])
+  };
+
+  const result = await groupTabByRules(
+    { id: 1, title: '商家工作台', url: 'https://partner.jinritemai.com/service/service-ability' },
+    [{ name: 'ai', urlKeyword: 'partner.jinritemai.com' }],
+    api
+  );
+
+  assert.equal(result.groupTitle, '服务商&商家工作台');
+  assert.deepEqual(calls, [['groupTabs', [1], 21]]);
+});

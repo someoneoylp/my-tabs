@@ -2,6 +2,7 @@ import { analyzeTabs, getDomain, getDomainGroups } from './analyzer.js';
 import { browserApi } from './browserApi.js';
 import { createActionManager } from './actions.js';
 import { DEFAULT_RULES_TEXT } from './defaultRules.js';
+import { DEFAULT_AUTO_GROUPING_ENABLED, DEFAULT_DISABLED_AUTO_GROUP_DOMAINS, isAutoGroupingAllowed, toggleAutoGroupingDomain } from './autoGroupingSettings.js';
 
 const app = document.querySelector('#app');
 const actionManager = createActionManager(browserApi);
@@ -9,7 +10,12 @@ let state = {
   status: 'loading',
   tabs: [],
   analysis: null,
-  settings: { inactiveDays: 3, groupingRulesText: DEFAULT_RULES_TEXT },
+  settings: {
+    inactiveDays: 3,
+    groupingRulesText: DEFAULT_RULES_TEXT,
+    autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
+    disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
+  },
   selectedTabIds: new Set(),
   toast: null,
   confirm: null
@@ -76,6 +82,10 @@ function renderHeader() {
       <div class="top-bar">
         <p class="brand">AI Tab Manager</p>
         <div class="header-controls">
+          <label class="toggle-control" title="自动匹配 Tab 分组">
+            <input type="checkbox" data-setting="auto-grouping-enabled" ${state.settings.autoGroupingEnabled ? 'checked' : ''} />
+            <span>自动匹配</span>
+          </label>
           <label class="inactive-pill">
             <span></span>
             <select data-setting="inactive-days" aria-label="长时间未打开">
@@ -150,6 +160,7 @@ function renderDomainGrid(groups) {
 function renderDomainCard(group) {
   const duplicateCount = duplicateCloseIdsForDomain(group.domain).length;
   const selectedCount = selectedCountForGroup(group);
+  const domainAutoGroupingEnabled = isAutoGroupingAllowed(group.domain, state.settings);
   return `
     <article class="mini-card">
       <div class="mini-card-header">
@@ -159,6 +170,10 @@ function renderDomainCard(group) {
           <p>${group.tabs.length} 个 Tab · ${duplicateCount} 个重复${selectedCount ? ` · 已选 ${selectedCount}` : ''}</p>
         </div>
         <div class="card-actions">
+          <label class="domain-toggle" title="${escapeHtml(group.domain)} 自动匹配">
+            <input type="checkbox" data-setting="domain-auto-grouping" data-domain="${escapeHtml(group.domain)}" ${domainAutoGroupingEnabled ? 'checked' : ''} ${state.settings.autoGroupingEnabled ? '' : 'disabled'} />
+            <span>自动</span>
+          </label>
           <button class="link-button" data-action="clear-duplicates" data-domain="${escapeHtml(group.domain)}" ${duplicateCount === 0 ? 'disabled' : ''}>重复</button>
           <button class="link-button danger" data-action="clear-domain" data-domain="${escapeHtml(group.domain)}">全部</button>
         </div>
@@ -236,6 +251,28 @@ async function changeInactiveDays(days) {
   await browserApi.saveSettings({ inactiveDays });
   state = { ...state, settings: { ...state.settings, inactiveDays } };
   await loadTabs();
+}
+
+async function changeAutoGroupingEnabled(enabled) {
+  const autoGroupingEnabled = Boolean(enabled);
+  await browserApi.saveSettings({ autoGroupingEnabled });
+  state = {
+    ...state,
+    settings: { ...state.settings, autoGroupingEnabled },
+    toast: autoGroupingEnabled ? '已开启自动匹配' : '已暂停自动匹配'
+  };
+  render();
+}
+
+async function changeDomainAutoGrouping(domain, enabled) {
+  const disabledAutoGroupDomains = toggleAutoGroupingDomain(domain, state.settings.disabledAutoGroupDomains, Boolean(enabled));
+  await browserApi.saveSettings({ disabledAutoGroupDomains });
+  state = {
+    ...state,
+    settings: { ...state.settings, disabledAutoGroupDomains },
+    toast: enabled ? `已开启 ${domain} 自动匹配` : `已暂停 ${domain} 自动匹配`
+  };
+  render();
 }
 
 async function saveGroupingRules() {
@@ -336,6 +373,8 @@ app.addEventListener('change', async event => {
   const target = event.target.closest('[data-setting]');
   if (!target) return;
   if (target.dataset.setting === 'inactive-days') await changeInactiveDays(target.value);
+  if (target.dataset.setting === 'auto-grouping-enabled') await changeAutoGroupingEnabled(target.checked);
+  if (target.dataset.setting === 'domain-auto-grouping') await changeDomainAutoGrouping(target.dataset.domain, target.checked);
 });
 
 loadTabs();

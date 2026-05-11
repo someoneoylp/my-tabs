@@ -1,4 +1,5 @@
 import { DEFAULT_RULES_TEXT } from './defaultRules.js';
+import { DEFAULT_AUTO_GROUPING_ENABLED, DEFAULT_DISABLED_AUTO_GROUP_DOMAINS, normalizeAutoGroupingSettings } from './autoGroupingSettings.js';
 import { mergeRules, parseRulesText, serializeRules } from './groupingRules.js';
 
 export const browserApi = {
@@ -36,12 +37,16 @@ export const browserApi = {
   async getSettings() {
     const result = await chrome.storage.local.get({
       inactiveDays: 3,
-      groupingRulesText: DEFAULT_RULES_TEXT
+      groupingRulesText: DEFAULT_RULES_TEXT,
+      autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
+      disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
     });
     const groupingRules = mergeRules(parseRulesText(result.groupingRulesText), parseRulesText(DEFAULT_RULES_TEXT));
+    const autoGroupingSettings = normalizeAutoGroupingSettings(result);
     return {
       inactiveDays: Number(result.inactiveDays) || 3,
-      groupingRulesText: serializeRules(groupingRules)
+      groupingRulesText: serializeRules(groupingRules),
+      ...autoGroupingSettings
     };
   },
 

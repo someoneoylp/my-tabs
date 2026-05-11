@@ -1,4 +1,6 @@
 import { DEFAULT_RULES_TEXT } from './defaultRules.js';
+import { getDomain } from './analyzer.js';
+import { DEFAULT_AUTO_GROUPING_ENABLED, DEFAULT_DISABLED_AUTO_GROUP_DOMAINS, isAutoGroupingAllowed } from './autoGroupingSettings.js';
 import { mergeRules, parseRulesText } from './groupingRules.js';
 import { groupTabByRules } from './tabGrouper.js';
 
@@ -14,8 +16,17 @@ async function getRules() {
   return mergeRules(parseRulesText(result.groupingRulesText), parseRulesText(DEFAULT_RULES_TEXT));
 }
 
+async function getAutoGroupingSettings() {
+  return chrome.storage.local.get({
+    autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
+    disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
+  });
+}
+
 async function autoGroupTab(tab) {
   if (!tab?.id || tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) return;
+  const settings = await getAutoGroupingSettings();
+  if (!isAutoGroupingAllowed(getDomain(tab.url), settings)) return;
   const rules = await getRules();
   await groupTabByRules(tab, rules, groupApi);
 }

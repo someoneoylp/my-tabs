@@ -113,6 +113,44 @@ button {
   padding: 0;
 }
 
+.toggle-control,
+.domain-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.toggle-control {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(255, 255, 252, 0.62);
+}
+
+.toggle-control input,
+.domain-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.domain-toggle {
+  min-height: 28px;
+  padding: 0 6px;
+}
+
+.domain-toggle:has(input:disabled) {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
 .btn {
   height: 34px;
   border: 1px solid var(--hairline);
