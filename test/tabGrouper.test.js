@@ -207,3 +207,25 @@ test('groupTabByRules groups GitHub into an existing ai group by URL rule', asyn
   assert.equal(result.groupTitle, 'ai');
   assert.deepEqual(calls, [['groupTabs', [1], 13]]);
 });
+
+test('groupTabByRules prefers separator-split title group over ai URL rule', async () => {
+  const calls = [];
+  const api = {
+    queryTabs: async () => [
+      { id: 2, title: '服务商旧页', groupId: 21 },
+      { id: 3, title: 'AI Home', groupId: 13 }
+    ],
+    getGroup: async groupId => ({ id: groupId, title: groupId === 21 ? '服务商&商家工作台' : 'ai' }),
+    groupTabs: async ({ tabIds, groupId }) => calls.push(['groupTabs', tabIds, groupId]),
+    updateGroup: async () => calls.push(['updateGroup'])
+  };
+
+  const result = await groupTabByRules(
+    { id: 1, title: '服务商工作台', url: 'https://partner.jinritemai.com/service/service-ability' },
+    [{ name: 'ai', urlKeyword: 'partner.jinritemai.com' }],
+    api
+  );
+
+  assert.equal(result.groupTitle, '服务商&商家工作台');
+  assert.deepEqual(calls, [['groupTabs', [1], 21]]);
+});

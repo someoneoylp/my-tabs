@@ -5,7 +5,8 @@ function normalize(value) {
 function titleKeywords(name) {
   const normalized = normalize(name);
   const compact = normalized.replace(/(tab|group|分组|页面)$/i, '');
-  return [normalized, compact]
+  const parts = compact.split(/[&｜|/\\,，、\s_-]+/);
+  return [normalized, compact, ...parts]
     .filter(keyword => keyword.length >= 2)
     .filter((keyword, index, list) => list.indexOf(keyword) === index);
 }

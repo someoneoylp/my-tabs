@@ -5,7 +5,8 @@ import {
   parseRulesText,
   findMatchingRule,
   mergeRules,
-  serializeRules
+  serializeRules,
+  titleMatchScore
 } from '../src/groupingRules.js';
 
 test('parseRuleLine supports group name and optional URL keyword', () => {
@@ -65,4 +66,11 @@ test('mergeRules appends missing default rules without duplicating user rules', 
   );
 
   assert.equal(serializeRules(rules), '邮箱\nai/github.com\n飞书文档/bytedance.larkoffice.com');
+});
+
+test('titleMatchScore matches useful parts split by separators', () => {
+  assert.equal(
+    titleMatchScore('服务商工作台', { name: '服务商&商家工作台' }),
+    3
+  );
 });
