@@ -41,6 +41,18 @@ function isTemporarilyUneditable(error) {
   return /tabs cannot be edited right now/i.test(error?.message || '');
 }
 
+async function moveGroupToEnd(groupId, api) {
+  if (!api.moveGroup) return { moved: false };
+
+  try {
+    await api.moveGroup(groupId, { index: -1 });
+    return { moved: true };
+  } catch (error) {
+    if (isTemporarilyUneditable(error)) return { moved: false, reason: 'temporarily-uneditable' };
+    throw error;
+  }
+}
+
 async function groupIntoExistingGroup(tab, group, api) {
   if (tab.groupId === group.id) {
     return { grouped: true, groupId: group.id, groupTitle: group.title, reason: 'already-grouped' };
@@ -52,6 +64,9 @@ async function groupIntoExistingGroup(tab, group, api) {
     if (isTemporarilyUneditable(error)) return { grouped: false, reason: 'temporarily-uneditable' };
     throw error;
   }
+
+  const moveResult = await moveGroupToEnd(group.id, api);
+  if (moveResult.reason === 'temporarily-uneditable') return { grouped: false, reason: 'temporarily-uneditable' };
 
   return { grouped: true, groupId: group.id, groupTitle: group.title };
 }
@@ -95,5 +110,7 @@ export async function groupTabByRules(tab, rules, api) {
     throw error;
   }
   await api.updateGroup(groupId, { title: rule.name, color: DEFAULT_GROUP_COLOR });
+  const moveResult = await moveGroupToEnd(groupId, api);
+  if (moveResult.reason === 'temporarily-uneditable') return { grouped: false, reason: 'temporarily-uneditable' };
   return { grouped: true, groupId, groupTitle: rule.name };
 }

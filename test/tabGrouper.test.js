@@ -26,13 +26,17 @@ test('groupTabByRules adds tab to an existing titled group', async () => {
     queryTabs: async () => [{ id: 2, title: '旧文档', groupId: 9 }],
     getGroup: async groupId => ({ id: groupId, title: '飞书文档' }),
     groupTabs: async ({ tabIds, groupId }) => calls.push(['groupTabs', tabIds, groupId]),
+    moveGroup: async (groupId, options) => calls.push(['moveGroup', groupId, options]),
     updateGroup: async () => calls.push(['updateGroup'])
   };
 
   const result = await groupTabByRules({ id: 1, title: '产品需求', url: 'https://bytedance.larkoffice.com/doc/abc' }, [{ name: '飞书文档', urlKeyword: 'bytedance.larkoffice.com' }], api);
 
   assert.equal(result.grouped, true);
-  assert.deepEqual(calls, [['groupTabs', [1], 9]]);
+  assert.deepEqual(calls, [
+    ['groupTabs', [1], 9],
+    ['moveGroup', 9, { index: -1 }]
+  ]);
 });
 
 test('groupTabByRules ignores tabs without matching rule or id', async () => {
@@ -143,6 +147,74 @@ test('groupTabByRules treats temporarily uneditable tabs as a soft failure', asy
   );
 
   assert.deepEqual(result, { grouped: false, reason: 'temporarily-uneditable' });
+});
+
+test('groupTabByRules treats temporarily uneditable group moves as a soft failure', async () => {
+  const api = {
+    queryTabs: async () => [{ id: 2, title: '小助手旧页', groupId: 10 }],
+    getGroup: async groupId => ({ id: groupId, title: '小助手' }),
+    groupTabs: async () => 10,
+    moveGroup: async () => {
+      throw new Error('Tabs cannot be edited right now (user may be dragging a tab).');
+    },
+    updateGroup: async () => {
+      throw new Error('should not update');
+    }
+  };
+
+  const result = await groupTabByRules(
+    { id: 1, groupId: 9, title: '2026.05 以旧换新小助手 - 飞书云文档', url: 'https://bytedance.larkoffice.com/wiki/HyklwpfR4ilN2ykMvs0cpndCnne' },
+    [{ name: '飞书文档', urlKeyword: 'bytedance.larkoffice.com' }],
+    api
+  );
+
+  assert.deepEqual(result, { grouped: false, reason: 'temporarily-uneditable' });
+});
+
+test('groupTabByRules moves newly created groups to the end', async () => {
+  const calls = [];
+  const api = {
+    queryTabs: async () => [],
+    groupTabs: async ({ tabIds }) => { calls.push(['groupTabs', tabIds]); return 7; },
+    updateGroup: async (groupId, update) => calls.push(['updateGroup', groupId, update]),
+    moveGroup: async (groupId, options) => calls.push(['moveGroup', groupId, options])
+  };
+
+  const result = await groupTabByRules(
+    { id: 1, title: 'AI Home', url: 'https://github.com' },
+    [{ name: 'ai', urlKeyword: 'github.com' }],
+    api
+  );
+
+  assert.equal(result.groupTitle, 'ai');
+  assert.deepEqual(calls, [
+    ['groupTabs', [1]],
+    ['updateGroup', 7, { title: 'ai', color: 'green' }],
+    ['moveGroup', 7, { index: -1 }]
+  ]);
+});
+
+test('groupTabByRules does not move groups when preserving a manual group', async () => {
+  const calls = [];
+  const api = {
+    queryTabs: async () => [
+      { id: 1, title: 'AI 文档', groupId: 12 },
+      { id: 2, title: 'AI 资料', groupId: 13 }
+    ],
+    getGroup: async groupId => ({ id: groupId, title: groupId === 12 ? '待阅读文档' : 'ai' }),
+    groupTabs: async () => calls.push(['groupTabs']),
+    moveGroup: async () => calls.push(['moveGroup']),
+    updateGroup: async () => calls.push(['updateGroup'])
+  };
+
+  const result = await groupTabByRules(
+    { id: 1, groupId: 12, title: 'AI 阅读材料 - 飞书云文档', url: 'https://bytedance.larkoffice.com/wiki/Sn7rwMYqtiyx78kr2iccbxc4nUd' },
+    [{ name: '飞书文档', urlKeyword: 'bytedance.larkoffice.com' }],
+    api
+  );
+
+  assert.deepEqual(result, { grouped: true, groupId: 12, groupTitle: '待阅读文档', reason: 'keep-manual-group' });
+  assert.deepEqual(calls, []);
 });
 
 test('groupTabByRules keeps a manually grouped tab during URL-only refresh events', async () => {

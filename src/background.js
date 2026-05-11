@@ -8,6 +8,7 @@ const groupApi = {
   queryTabs: query => chrome.tabs.query(query),
   getGroup: groupId => chrome.tabGroups.get(groupId),
   groupTabs: options => chrome.tabs.group(options),
+  moveGroup: (groupId, options) => chrome.tabGroups.move(groupId, options),
   updateGroup: (groupId, update) => chrome.tabGroups.update(groupId, update)
 };
 
