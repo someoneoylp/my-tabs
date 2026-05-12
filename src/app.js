@@ -129,7 +129,7 @@ function renderHeader() {
   return `
     <header class="page-header">
       <div class="top-bar">
-        <p class="brand"><img src="../icons/icon-32.png" alt="" />My Best Tabs</p>
+        <p class="brand">My Best Tabs</p>
         <div class="header-controls">
           <label class="toggle-control" title="自动匹配 Tab 分组">
             <input type="checkbox" data-setting="auto-grouping-enabled" ${state.settings.autoGroupingEnabled ? 'checked' : ''} />
@@ -146,7 +146,6 @@ function renderHeader() {
       </div>
 
       <section class="hero">
-        <img class="hero-icon" src="../icons/icon-128.png" alt="" />
         <h1>My tabs</h1>
         <p>当前 ${nonPinnedTabs().length} 个非置顶 Tab，按 ${groups.length} 个域名整理；${cleanableCount} 个可清理，置顶已排除 · ${formatTime(state.analysis.snapshotTime)}</p>
       </section>
@@ -287,7 +286,7 @@ function renderConfirmDialog() {
 
 function render() {
   if (state.status === 'loading') {
-    app.innerHTML = '<section class="loading-card"><img class="loading-icon" src="../icons/icon-48.png" alt="" /><p class="eyebrow">My Best Tabs</p><h1>正在分析当前 Tab…</h1><p>正在按域名整理 Tab，置顶页面不会进入统计。</p></section>';
+    app.innerHTML = '<section class="loading-card"><p class="eyebrow">My Best Tabs</p><h1>正在分析当前 Tab…</h1><p>正在按域名整理 Tab，置顶页面不会进入统计。</p></section>';
     return;
   }
   if (state.status === 'error') {

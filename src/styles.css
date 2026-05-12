@@ -76,18 +76,6 @@ button {
   letter-spacing: 0.02em;
 }
 
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.brand img {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-}
-
 .header-controls,
 .actions {
   display: flex;
@@ -205,14 +193,6 @@ button {
 .hero {
   margin: 72px auto 56px;
   text-align: center;
-}
-
-.hero-icon {
-  width: 64px;
-  height: 64px;
-  display: block;
-  margin: 0 auto 16px;
-  border-radius: 18px;
 }
 
 h1 {
@@ -668,14 +648,6 @@ h1 {
 .error-card h1 {
   margin: 4px 0 8px;
   font-size: 28px;
-}
-
-.loading-icon {
-  width: 48px;
-  height: 48px;
-  display: block;
-  margin-bottom: 12px;
-  border-radius: 14px;
 }
 
 .subtitle {
