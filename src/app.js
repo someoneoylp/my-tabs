@@ -253,9 +253,12 @@ function renderUrlChip(tab, domain) {
       <div class="url-chip-main">
         <div class="url-chip-title">${escapeHtml(tab.title)}</div>
         <div class="url-chip-url">${escapeHtml(tab.url)}</div>
-        <div class="url-badges">${badges || '<span class="badge">可清理</span>'}</div>
+        ${badges ? `<div class="url-badges">${badges}</div>` : ''}
       </div>
-      <button class="icon-clean" title="单独清理" data-action="clear-one" data-domain="${escapeHtml(domain)}" data-tab-id="${tab.id}">关闭</button>
+      <div class="url-chip-actions">
+        <button class="icon-open" title="打开这个 Tab" data-action="focus-tab" data-tab-id="${tab.id}">打开</button>
+        <button class="icon-clean" title="单独清理" data-action="clear-one" data-domain="${escapeHtml(domain)}" data-tab-id="${tab.id}">关闭</button>
+      </div>
     </div>
   `;
 }

@@ -513,6 +513,27 @@ h1 {
   font-weight: 400;
 }
 
+.url-chip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-open {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 3px 7px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.icon-open:hover {
+  background: var(--accent-soft);
+}
+
 .icon-clean:hover {
   background: var(--danger-soft);
   color: var(--danger);
