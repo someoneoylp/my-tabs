@@ -1,11 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "AI Tab Manager",
+  "name": "My Best Tabs",
   "version": "0.1.0",
-  "description": "AI-assisted suggestion mode for safer Chrome tab cleanup.",
+  "description": "A friendly Chrome tab manager for grouping, finding, and cleaning up tabs.",
   "permissions": ["tabs", "storage", "tabGroups"],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
-    "default_title": "Open AI Tab Manager"
+    "default_title": "Open My Best Tabs",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "background": {
     "service_worker": "src/background.js",

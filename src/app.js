@@ -129,7 +129,7 @@ function renderHeader() {
   return `
     <header class="page-header">
       <div class="top-bar">
-        <p class="brand">AI Tab Manager</p>
+        <p class="brand">My Best Tabs</p>
         <div class="header-controls">
           <label class="toggle-control" title="自动匹配 Tab 分组">
             <input type="checkbox" data-setting="auto-grouping-enabled" ${state.settings.autoGroupingEnabled ? 'checked' : ''} />
@@ -286,7 +286,7 @@ function renderConfirmDialog() {
 
 function render() {
   if (state.status === 'loading') {
-    app.innerHTML = '<section class="loading-card"><p class="eyebrow">AI Tab Manager</p><h1>正在分析当前 Tab…</h1><p>正在按域名整理 Tab，置顶页面不会进入统计。</p></section>';
+    app.innerHTML = '<section class="loading-card"><p class="eyebrow">My Best Tabs</p><h1>正在分析当前 Tab…</h1><p>正在按域名整理 Tab，置顶页面不会进入统计。</p></section>';
     return;
   }
   if (state.status === 'error') {
