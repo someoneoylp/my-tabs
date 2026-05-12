@@ -59,6 +59,10 @@ function inactiveIdSet() {
   return new Set(state.analysis.inactiveTabs.map(tab => tab.id));
 }
 
+function duplicateCloseIdsAll() {
+  return [...new Set(state.analysis.duplicateGroups.flatMap(group => group.recommendedCloseIds || []))];
+}
+
 function duplicateCloseIdsForDomain(domain) {
   const closeIds = [];
   for (const duplicateGroup of state.analysis.duplicateGroups) {
@@ -67,6 +71,13 @@ function duplicateCloseIdsForDomain(domain) {
     closeIds.push(...sameDomainTabs.slice(1).map(tab => tab.id));
   }
   return [...new Set(closeIds)];
+}
+
+function inactiveCloseIdsForDomain(domain) {
+  return state.analysis.inactiveTabs
+    .filter(tab => getDomain(tab.url) === domain)
+    .filter(tab => !tab.pinned)
+    .map(tab => tab.id);
 }
 
 function selectedCountForGroup(group) {
@@ -137,6 +148,7 @@ function renderDomainGrid(groups) {
     return '<section class="empty-board">没有可管理的非置顶 Tab。</section>';
   }
   const selectedTotal = state.selectedTabIds.size;
+  const duplicateTotal = duplicateCloseIdsAll().length;
   return `
     <section class="groups-section">
       <div class="section-head">
@@ -146,6 +158,7 @@ function renderDomainGrid(groups) {
         </div>
         <div class="batch-actions">
           <span>${selectedTotal ? `已选 ${selectedTotal} 个` : '勾选后可批量清理'}</span>
+          <button class="btn danger ghost" data-action="clear-all-duplicates" ${duplicateTotal === 0 ? 'disabled' : ''}>清理重复</button>
           <button class="btn danger ghost" data-action="clear-selected-all" ${selectedTotal === 0 ? 'disabled' : ''}>清理已选</button>
         </div>
       </div>
@@ -158,6 +171,7 @@ function renderDomainGrid(groups) {
 
 function renderDomainCard(group) {
   const duplicateCount = duplicateCloseIdsForDomain(group.domain).length;
+  const inactiveCount = inactiveCloseIdsForDomain(group.domain).length;
   const selectedCount = selectedCountForGroup(group);
   const domainAutoGroupingEnabled = isAutoGroupingAllowed(group.domain, state.settings);
   return `
@@ -174,6 +188,7 @@ function renderDomainCard(group) {
             <span>自动</span>
           </label>
           <button class="link-button" data-action="clear-duplicates" data-domain="${escapeHtml(group.domain)}" ${duplicateCount === 0 ? 'disabled' : ''}>重复</button>
+          <button class="link-button" data-action="clear-inactive-domain" data-domain="${escapeHtml(group.domain)}" ${inactiveCount === 0 ? 'disabled' : ''}>${state.settings.inactiveDays}天未开</button>
           <button class="link-button danger" data-action="clear-domain" data-domain="${escapeHtml(group.domain)}">全部</button>
         </div>
       </div>
@@ -310,6 +325,14 @@ function requestClearDuplicates(domain) {
   requestCloseTabIds(duplicateCloseIdsForDomain(domain), `清理 ${domain} 下的重复 Tab，并保留每组 1 个`);
 }
 
+function requestClearAllDuplicates() {
+  requestCloseTabIds(duplicateCloseIdsAll(), '清理全部重复 Tab，并保留每组 1 个');
+}
+
+function requestClearInactiveDomain(domain) {
+  requestCloseTabIds(inactiveCloseIdsForDomain(domain), `清理 ${domain} 下 ${state.settings.inactiveDays} 天未打开的 Tab`);
+}
+
 function requestClearSelectedDomain(domain) {
   const group = groupByDomain(domain);
   const selectedIds = group.tabs.map(tab => tab.id).filter(id => state.selectedTabIds.has(id));
@@ -342,6 +365,8 @@ app.addEventListener('click', async event => {
   if (action === 'toggle-tab') toggleTab(Number(target.dataset.tabId));
   if (action === 'clear-domain') requestClearDomain(target.dataset.domain);
   if (action === 'clear-duplicates') requestClearDuplicates(target.dataset.domain);
+  if (action === 'clear-all-duplicates') requestClearAllDuplicates();
+  if (action === 'clear-inactive-domain') requestClearInactiveDomain(target.dataset.domain);
   if (action === 'clear-selected-domain') requestClearSelectedDomain(target.dataset.domain);
   if (action === 'clear-selected-all') requestClearSelectedAll();
   if (action === 'clear-one') requestClearOne(Number(target.dataset.tabId));
