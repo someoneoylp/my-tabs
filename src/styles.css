@@ -195,6 +195,14 @@ button {
   text-align: center;
 }
 
+.hero-logo {
+  width: 96px;
+  height: 96px;
+  display: block;
+  margin: 0 auto 18px;
+  border-radius: 24px;
+}
+
 h1 {
   margin: 0 0 12px;
   font-size: clamp(38px, 5vw, 56px);
