@@ -34,6 +34,14 @@ export const browserApi = {
     return chrome.tabs.create({ url, windowId, active });
   },
 
+  async focusTab(tabId) {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab?.windowId !== undefined) {
+      await chrome.windows.update(tab.windowId, { focused: true });
+    }
+    return tab;
+  },
+
   async getSettings() {
     const result = await chrome.storage.local.get({
       inactiveDays: 3,

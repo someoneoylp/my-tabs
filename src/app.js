@@ -17,6 +17,7 @@ let state = {
     disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
   },
   selectedTabIds: new Set(),
+  searchQuery: '',
   confirm: null
 };
 
@@ -84,6 +85,44 @@ function selectedCountForGroup(group) {
   return group.tabs.filter(tab => state.selectedTabIds.has(tab.id)).length;
 }
 
+function searchResults() {
+  const query = state.searchQuery.trim().toLowerCase();
+  if (!query) return [];
+  return state.tabs
+    .filter(tab => `${tab.title || ''}\n${tab.url || ''}`.toLowerCase().includes(query))
+    .sort((a, b) => Number(b.active) - Number(a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0))
+    .slice(0, 12);
+}
+
+function renderSearchResults() {
+  const query = state.searchQuery.trim();
+  if (!query) return '';
+  const results = searchResults();
+  if (results.length === 0) {
+    return '<div class="search-empty">没有找到匹配的 Tab</div>';
+  }
+  return `
+    <div class="search-result-list">
+      ${results.map(tab => `
+        <button class="search-result" data-action="focus-tab" data-tab-id="${tab.id}">
+          <span class="search-title">${escapeHtml(tab.title)}</span>
+          <span class="search-meta">${escapeHtml(getDomain(tab.url))}${tab.pinned ? ' · 置顶' : ''}${tab.active ? ' · 当前' : ''}</span>
+          <span class="search-url">${escapeHtml(tab.url)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderSearchBox() {
+  return `
+    <section class="tab-search" aria-label="查找已打开的 Tab">
+      <input type="search" data-setting="tab-search" value="${escapeHtml(state.searchQuery)}" placeholder="查找已打开的 Tab，输入页面名称或 URL" autocomplete="off" />
+      <div class="search-results" data-search-results>${renderSearchResults()}</div>
+    </section>
+  `;
+}
+
 function renderHeader() {
   const groups = visibleDomainGroups();
   const cleanableCount = groups.reduce((sum, group) => sum + group.tabs.length, 0);
@@ -110,6 +149,7 @@ function renderHeader() {
         <h1>My tabs</h1>
         <p>当前 ${nonPinnedTabs().length} 个非置顶 Tab，按 ${groups.length} 个域名整理；${cleanableCount} 个可清理，置顶已排除 · ${formatTime(state.analysis.snapshotTime)}</p>
       </section>
+      ${renderSearchBox()}
     </header>
   `;
 }
@@ -356,6 +396,10 @@ async function confirmClose() {
   render();
 }
 
+async function focusTab(tabId) {
+  await browserApi.focusTab(tabId);
+}
+
 app.addEventListener('click', async event => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -372,6 +416,15 @@ app.addEventListener('click', async event => {
   if (action === 'clear-one') requestClearOne(Number(target.dataset.tabId));
   if (action === 'cancel-confirm') { state = { ...state, confirm: null }; render(); }
   if (action === 'confirm-close') await confirmClose();
+  if (action === 'focus-tab') await focusTab(Number(target.dataset.tabId));
+});
+
+app.addEventListener('input', event => {
+  const target = event.target.closest('[data-setting="tab-search"]');
+  if (!target) return;
+  state = { ...state, searchQuery: target.value };
+  const results = app.querySelector('[data-search-results]');
+  if (results) results.innerHTML = renderSearchResults();
 });
 
 app.addEventListener('change', async event => {
