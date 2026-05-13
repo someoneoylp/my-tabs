@@ -248,7 +248,7 @@ function renderHeader() {
         <img class="hero-logo" src="../icons/icon-128.png" alt="My Best Tabs" />
         <p>当前 ${nonPinnedTabs().length} 个非置顶 Tab，按 ${groups.length} 个域名整理；${cleanableCount} 个可清理，置顶已排除 · ${formatTime(state.analysis.snapshotTime)}</p>
       </section>
-      ${renderSearchBox()}
+      ${state.smartGroupDraft || state.confirm ? '' : renderSearchBox()}
     </header>
   `;
 }
