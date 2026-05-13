@@ -882,7 +882,7 @@ h1 {
 }
 
 .smart-panel {
-  width: min(1280px, 100%);
+  width: min(1580px, calc(100vw - 48px));
   max-height: min(760px, calc(100vh - 48px));
   display: flex;
   flex-direction: column;
@@ -909,16 +909,20 @@ h1 {
   min-height: 0;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
   margin: 18px 0;
   padding-right: 4px;
+  align-items: start;
 }
 
 .smart-group-card {
+  height: 276px;
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(42, 35, 24, 0.08);
   border-radius: 14px;
-  background: rgba(248, 246, 240, 0.46);
+  background: rgba(255, 255, 252, 0.7);
   overflow: hidden;
 }
 
@@ -960,18 +964,23 @@ h1 {
 }
 
 .smart-url-list {
+  min-height: 0;
+  flex: 1;
   display: grid;
+  align-content: start;
   gap: 4px;
   padding: 0 7px 8px;
+  overflow: auto;
 }
 
 .smart-url-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
   border-radius: 10px;
-  padding: 8px 7px;
+  min-height: 48px;
+  padding: 6px 7px;
 }
 
 .smart-url-item:hover {
@@ -981,7 +990,19 @@ h1 {
 .smart-tab-copy {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 2px;
+}
+
+.smart-tab-mark {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 11px;
+  font-weight: 460;
 }
 
 .smart-tab-copy strong,
@@ -993,21 +1014,27 @@ h1 {
 
 .smart-tab-copy strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 460;
 }
 
-.smart-tab-copy span,
-.smart-tab-copy small {
+.smart-tab-copy span {
   color: var(--faint);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .smart-item-actions {
   display: grid;
-  grid-template-columns: auto 128px;
+  grid-template-columns: 112px auto;
   gap: 6px;
   align-items: center;
+  opacity: 0.42;
+  transition: opacity 120ms ease;
+}
+
+.smart-url-item:hover .smart-item-actions,
+.smart-item-actions:focus-within {
+  opacity: 1;
 }
 
 .smart-item-actions select,

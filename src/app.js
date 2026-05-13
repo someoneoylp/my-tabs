@@ -551,18 +551,19 @@ function renderSmartSuggestionItem(suggestion) {
   const tab = smartSuggestionTab(suggestion);
   if (!tab) return '';
   const selectedKey = smartTargetKey(suggestion);
+  const domain = getDomain(tab.url);
   return `
     <div class="smart-url-item">
+      <span class="smart-tab-mark">${escapeHtml(domain.slice(0, 1).toUpperCase())}</span>
       <div class="smart-tab-copy">
         <strong>${escapeHtml(tab.title)}</strong>
-        <span>${escapeHtml(tab.url)}</span>
-        <small>${escapeHtml(suggestion.reason)}</small>
+        <span>${escapeHtml(domain)}</span>
       </div>
       <div class="smart-item-actions">
-        <button class="link-button" data-action="skip-smart-tab" data-tab-id="${tab.id}">删除</button>
         <select data-setting="smart-target" data-tab-id="${tab.id}" title="移动到分组">
           ${smartTargetOptions(tab, selectedKey)}
         </select>
+        <button class="link-button" data-action="skip-smart-tab" data-tab-id="${tab.id}">跳过</button>
       </div>
     </div>
   `;
