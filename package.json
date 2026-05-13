@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/analyzer.js && node --check src/actions.js && node --check src/defaultRules.js && node --check src/autoGroupingSettings.js && node --check src/groupingRules.js && node --check src/tabGrouper.js && node --check src/app.js && node --check src/browserApi.js && node --check src/background.js"
+    "check": "node --check src/analyzer.js && node --check src/actions.js && node --check src/defaultRules.js && node --check src/autoGroupingSettings.js && node --check src/groupingRules.js && node --check src/tabGrouper.js && node --check src/smartGrouping.js && node --check src/app.js && node --check src/browserApi.js && node --check src/background.js"
   }
 }

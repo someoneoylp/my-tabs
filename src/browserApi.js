@@ -32,7 +32,19 @@ export const browserApi = {
       favIconUrl: tab.favIconUrl || '',
       active: Boolean(tab.active),
       pinned: Boolean(tab.pinned),
+      groupId: typeof tab.groupId === 'number' ? tab.groupId : -1,
       lastAccessed: tab.lastAccessed || Date.now()
+    }));
+  },
+
+  async getTabGroups() {
+    if (!chrome.tabGroups?.query) return [];
+    const groups = await chrome.tabGroups.query({});
+    return groups.map(group => ({
+      id: group.id,
+      windowId: group.windowId,
+      title: group.title || '未命名分组',
+      color: group.color || 'grey'
     }));
   },
 
@@ -69,6 +81,16 @@ export const browserApi = {
     return tab;
   },
 
+  async groupTabs({ tabIds, groupId }) {
+    if (!tabIds?.length) return null;
+    const options = groupId === undefined || groupId === null ? { tabIds } : { tabIds, groupId };
+    return chrome.tabs.group(options);
+  },
+
+  async updateGroup(groupId, update) {
+    return chrome.tabGroups.update(groupId, update);
+  },
+
   async getBookmarks() {
     if (!chrome.bookmarks?.getTree) return [];
     const tree = await chrome.bookmarks.getTree();
@@ -80,13 +102,15 @@ export const browserApi = {
       inactiveDays: 3,
       groupingRulesText: DEFAULT_RULES_TEXT,
       autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
-      disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
+      disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS,
+      bookmarkRemarks: {}
     });
     const groupingRules = mergeRules(parseRulesText(result.groupingRulesText), parseRulesText(DEFAULT_RULES_TEXT));
     const autoGroupingSettings = normalizeAutoGroupingSettings(result);
     return {
       inactiveDays: Number(result.inactiveDays) || 3,
       groupingRulesText: serializeRules(groupingRules),
+      bookmarkRemarks: result.bookmarkRemarks && typeof result.bookmarkRemarks === 'object' ? result.bookmarkRemarks : {},
       ...autoGroupingSettings
     };
   },

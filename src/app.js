@@ -3,22 +3,26 @@ import { browserApi } from './browserApi.js';
 import { createActionManager } from './actions.js';
 import { DEFAULT_RULES_TEXT } from './defaultRules.js';
 import { DEFAULT_AUTO_GROUPING_ENABLED, DEFAULT_DISABLED_AUTO_GROUP_DOMAINS, isAutoGroupingAllowed, toggleAutoGroupingDomain } from './autoGroupingSettings.js';
+import { createSmartGroupDraft, getUngroupedTabs } from './smartGrouping.js';
 
 const app = document.querySelector('#app');
 const actionManager = createActionManager(browserApi);
 let state = {
   status: 'loading',
   tabs: [],
+  tabGroups: [],
   bookmarks: [],
   analysis: null,
   settings: {
     inactiveDays: 3,
     groupingRulesText: DEFAULT_RULES_TEXT,
     autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
-    disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS
+    disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS,
+    bookmarkRemarks: {}
   },
   selectedTabIds: new Set(),
   searchQuery: '',
+  smartGroupDraft: null,
   confirm: null
 };
 
@@ -27,12 +31,12 @@ function escapeHtml(value) {
 }
 
 async function loadTabs() {
-  state = { ...state, status: 'loading', confirm: null, selectedTabIds: new Set() };
+  state = { ...state, status: 'loading', confirm: null, smartGroupDraft: null, selectedTabIds: new Set() };
   render();
   try {
-    const [tabs, bookmarks, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getBookmarks(), browserApi.getSettings()]);
+    const [tabs, tabGroups, bookmarks, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getTabGroups(), browserApi.getBookmarks(), browserApi.getSettings()]);
     const inactiveThresholdMs = settings.inactiveDays * 24 * 60 * 60 * 1000;
-    state = { ...state, status: 'ready', tabs, bookmarks, settings, analysis: analyzeTabs(tabs, { inactiveThresholdMs }) };
+    state = { ...state, status: 'ready', tabs, tabGroups, bookmarks, settings, analysis: analyzeTabs(tabs, { inactiveThresholdMs }) };
   } catch (error) {
     state = { ...state, status: 'error', error: error?.message || '无法读取 Tab' };
   }
@@ -90,19 +94,23 @@ function bookmarkById(id) {
   return state.bookmarks.find(bookmark => bookmark.id === String(id));
 }
 
-function bookmarkFolderGroups() {
+function bookmarkRemark(bookmarkId) {
+  return String(state.settings.bookmarkRemarks?.[bookmarkId] || '').trim();
+}
+
+function bookmarkDomainGroups() {
   const groups = new Map();
   for (const bookmark of state.bookmarks) {
-    const folder = bookmark.folder || 'Bookmarks';
-    if (!groups.has(folder)) groups.set(folder, []);
-    groups.get(folder).push(bookmark);
+    const domain = getDomain(bookmark.url);
+    if (!groups.has(domain)) groups.set(domain, []);
+    groups.get(domain).push(bookmark);
   }
   return [...groups.entries()]
-    .map(([folder, bookmarks]) => ({
-      folder,
+    .map(([domain, bookmarks]) => ({
+      domain,
       bookmarks: bookmarks.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0))
     }))
-    .sort((a, b) => b.bookmarks.length - a.bookmarks.length || a.folder.localeCompare(b.folder));
+    .sort((a, b) => b.bookmarks.length - a.bookmarks.length || a.domain.localeCompare(b.domain));
 }
 
 function searchResults() {
@@ -113,7 +121,7 @@ function searchResults() {
     .sort((a, b) => Number(b.active) - Number(a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0))
     .slice(0, 6);
   const bookmarks = state.bookmarks
-    .filter(bookmark => `${bookmark.title || ''}\n${bookmark.url || ''}\n${bookmark.folder || ''}`.toLowerCase().includes(query))
+    .filter(bookmark => `${bookmark.title || ''}\n${bookmark.url || ''}\n${bookmark.folder || ''}\n${bookmarkRemark(bookmark.id)}`.toLowerCase().includes(query))
     .sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0))
     .slice(0, 8);
   return { tabs, bookmarks };
@@ -135,20 +143,23 @@ function renderSearchResults() {
           <span class="search-url">${escapeHtml(tab.url)}</span>
         </button>
       `).join('')}
-      ${results.bookmarks.map(bookmark => `
+      ${results.bookmarks.map(bookmark => {
+        const remark = bookmarkRemark(bookmark.id);
+        return `
         <button class="search-result" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
-          <span class="search-title">${escapeHtml(bookmark.title)}</span>
-          <span class="search-meta">书签 · ${escapeHtml(bookmark.folder)}</span>
+          <span class="search-title">${escapeHtml(remark ? `${remark} · ${bookmark.title}` : bookmark.title)}</span>
+          <span class="search-meta">书签 · ${escapeHtml(getDomain(bookmark.url))}</span>
           <span class="search-url">${escapeHtml(bookmark.url)}</span>
         </button>
-      `).join('')}
+      `;
+      }).join('')}
     </div>
   `;
 }
 
 function renderSearchBox() {
   return `
-    <section class="tab-search" aria-label="查找已打开的 Tab">
+    <section class="tab-search" aria-label="查找已打开的 Tab 和书签">
       <input type="search" data-setting="tab-search" value="${escapeHtml(state.searchQuery)}" placeholder="查找已打开的 Tab 或书签，输入名称或 URL" autocomplete="off" />
       <div class="search-results" data-search-results>${renderSearchResults()}</div>
     </section>
@@ -158,6 +169,7 @@ function renderSearchBox() {
 function renderHeader() {
   const groups = visibleDomainGroups();
   const cleanableCount = groups.reduce((sum, group) => sum + group.tabs.length, 0);
+  const ungroupedCount = getUngroupedTabs(state.tabs).length;
   return `
     <header class="page-header">
       <div class="top-bar">
@@ -173,6 +185,7 @@ function renderHeader() {
               ${[1, 3, 7, 14].map(days => `<option value="${days}" ${state.settings.inactiveDays === days ? 'selected' : ''}>${days} 天未打开</option>`).join('')}
             </select>
           </label>
+          <button class="btn" data-action="open-smart-grouping" ${ungroupedCount === 0 ? 'disabled' : ''}>智能分组${ungroupedCount ? ` ${ungroupedCount}` : ''}</button>
           <button class="btn primary" data-action="reload">重新分析</button>
         </div>
       </div>
@@ -188,7 +201,7 @@ function renderHeader() {
 
 function renderBookmarksSection() {
   if (state.bookmarks.length === 0) return '';
-  const groups = bookmarkFolderGroups();
+  const groups = bookmarkDomainGroups();
   return `
     <section class="bookmarks-section">
       <div class="section-head">
@@ -196,7 +209,7 @@ function renderBookmarksSection() {
           <p class="section-label">Bookmarks</p>
           <h2>快速书签</h2>
         </div>
-        <span class="section-note">${state.bookmarks.length} 个书签 · 按文件夹整理</span>
+        <span class="section-note">${state.bookmarks.length} 个书签 · 按 ${groups.length} 个域名整理</span>
       </div>
       <div class="bookmark-grid">
         ${groups.map(group => renderBookmarkCard(group)).join('')}
@@ -210,7 +223,7 @@ function renderBookmarkCard(group) {
     <article class="bookmark-card">
       <div class="bookmark-card-head">
         <div>
-          <h3>${escapeHtml(group.folder)}</h3>
+          <h3>${escapeHtml(group.domain)}</h3>
           <p>${group.bookmarks.length} 个链接</p>
         </div>
       </div>
@@ -223,14 +236,18 @@ function renderBookmarkCard(group) {
 
 function renderBookmarkItem(bookmark) {
   const domain = getDomain(bookmark.url);
+  const remark = bookmarkRemark(bookmark.id);
   return `
-    <button class="bookmark-item" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}" title="${escapeHtml(bookmark.url)}">
-      <span class="bookmark-mark">${escapeHtml(domain.slice(0, 1).toUpperCase())}</span>
-      <span class="bookmark-copy">
-        <span>${escapeHtml(bookmark.title)}</span>
-        <small>${escapeHtml(domain)}</small>
-      </span>
-    </button>
+    <div class="bookmark-item" title="${escapeHtml(bookmark.url)}">
+      <button class="bookmark-open" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
+        <span class="bookmark-mark">${escapeHtml(domain.slice(0, 1).toUpperCase())}</span>
+        <span class="bookmark-copy">
+          <span>${escapeHtml(remark || bookmark.title)}</span>
+          <small>${escapeHtml(remark ? bookmark.title : bookmark.folder)}</small>
+        </span>
+      </button>
+      <input class="bookmark-remark" data-setting="bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(remark)}" placeholder="备注" aria-label="书签备注名" />
+    </div>
   `;
 }
 
@@ -343,6 +360,69 @@ function renderUrlChip(tab, domain) {
   `;
 }
 
+function smartSuggestionTab(suggestion) {
+  return tabById(suggestion.tabId);
+}
+
+function renderSmartGroupPanel() {
+  if (!state.smartGroupDraft) return '';
+  const suggestions = state.smartGroupDraft.suggestions;
+  const activeSuggestions = suggestions.filter(suggestion => suggestion.targetMode !== 'skip');
+
+  return `
+    <div class="confirm-backdrop">
+      <section class="smart-panel">
+        <div class="smart-panel-head">
+          <div>
+            <p class="eyebrow">Smart grouping preview</p>
+            <h2>未分组 Tab 智能预览</h2>
+            <p class="subtitle">先检查建议结果，可以改到已有分组、新建分组，或跳过某个页面。</p>
+          </div>
+          <button class="link-button" data-action="cancel-smart-grouping">关闭</button>
+        </div>
+        ${suggestions.length === 0 ? '<div class="empty-board compact">当前没有可自动分组的未分组 Tab。</div>' : `
+          <div class="smart-list">
+            ${suggestions.map(suggestion => {
+              const tab = smartSuggestionTab(suggestion);
+              if (!tab) return '';
+              const selectedValue = suggestion.targetMode === 'existing' ? `existing:${suggestion.targetGroupId}` : suggestion.targetMode;
+              const existingOptions = state.smartGroupDraft.existingGroups
+                .filter(group => group.windowId === undefined || tab.windowId === undefined || group.windowId === tab.windowId)
+                .map(group => `
+                <option value="existing:${group.id}" ${selectedValue === `existing:${group.id}` ? 'selected' : ''}>${escapeHtml(group.title)}</option>
+              `).join('');
+              return `
+                <div class="smart-row">
+                  <div class="smart-tab-copy">
+                    <strong>${escapeHtml(tab.title)}</strong>
+                    <span>${escapeHtml(getDomain(tab.url))}</span>
+                    <small>${escapeHtml(suggestion.reason)}</small>
+                  </div>
+                  <div class="smart-controls">
+                    <select data-setting="smart-target" data-tab-id="${tab.id}">
+                      ${existingOptions}
+                      <option value="new" ${selectedValue === 'new' ? 'selected' : ''}>新建分组</option>
+                      <option value="skip" ${selectedValue === 'skip' ? 'selected' : ''}>跳过</option>
+                    </select>
+                    <input data-setting="smart-new-title" data-tab-id="${tab.id}" value="${escapeHtml(suggestion.newGroupTitle || '')}" placeholder="新分组名" ${suggestion.targetMode === 'new' ? '' : 'disabled'} />
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <div class="smart-panel-footer">
+            <span>将处理 ${activeSuggestions.length} 个 Tab</span>
+            <div class="actions">
+              <button class="btn" data-action="cancel-smart-grouping">取消</button>
+              <button class="btn primary" data-action="apply-smart-grouping" ${activeSuggestions.length === 0 ? 'disabled' : ''}>确认分组</button>
+            </div>
+          </div>
+        `}
+      </section>
+    </div>
+  `;
+}
+
 function renderConfirmDialog() {
   if (!state.confirm) return '';
   const tabs = state.confirm.tabIds.map(tabById).filter(Boolean);
@@ -374,7 +454,7 @@ function render() {
     return;
   }
   const groups = visibleDomainGroups();
-  app.innerHTML = `${renderHeader()}${renderBookmarksSection()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderConfirmDialog()}`;
+  app.innerHTML = `${renderHeader()}${renderBookmarksSection()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderSmartGroupPanel()}${renderConfirmDialog()}`;
 }
 
 async function changeInactiveDays(days) {
@@ -409,6 +489,88 @@ async function saveGroupingRules() {
   const groupingRulesText = textarea?.value || '';
   await browserApi.saveSettings({ groupingRulesText });
   state = { ...state, settings: { ...state.settings, groupingRulesText } };
+  render();
+}
+
+function openSmartGrouping() {
+  const draft = createSmartGroupDraft({
+    tabs: state.tabs,
+    groups: state.tabGroups,
+    rulesText: state.settings.groupingRulesText
+  });
+  state = { ...state, smartGroupDraft: draft };
+  render();
+}
+
+function updateSmartSuggestion(tabId, updater) {
+  if (!state.smartGroupDraft) return;
+  const suggestions = state.smartGroupDraft.suggestions.map(suggestion => {
+    if (suggestion.tabId !== Number(tabId)) return suggestion;
+    return updater(suggestion);
+  });
+  state = { ...state, smartGroupDraft: { ...state.smartGroupDraft, suggestions } };
+}
+
+function changeSmartTarget(tabId, value) {
+  updateSmartSuggestion(tabId, suggestion => {
+    if (value === 'skip') return { ...suggestion, targetMode: 'skip', targetGroupId: null };
+    if (value === 'new') return { ...suggestion, targetMode: 'new', targetGroupId: null, newGroupTitle: suggestion.newGroupTitle || getDomain(tabById(tabId)?.url) };
+    const groupId = Number(value.replace('existing:', ''));
+    return { ...suggestion, targetMode: 'existing', targetGroupId: groupId };
+  });
+  render();
+}
+
+function changeSmartNewTitle(tabId, value) {
+  updateSmartSuggestion(tabId, suggestion => ({ ...suggestion, newGroupTitle: value }));
+}
+
+async function applySmartGrouping() {
+  if (!state.smartGroupDraft) return;
+  const existingGroups = new Map();
+  const newGroups = new Map();
+
+  for (const suggestion of state.smartGroupDraft.suggestions) {
+    const tab = tabById(suggestion.tabId);
+    if (!tab || tab.pinned || suggestion.targetMode === 'skip') continue;
+    if (suggestion.targetMode === 'existing' && suggestion.targetGroupId !== null) {
+      const key = Number(suggestion.targetGroupId);
+      if (!existingGroups.has(key)) existingGroups.set(key, []);
+      existingGroups.get(key).push(tab.id);
+    }
+    if (suggestion.targetMode === 'new') {
+      const title = String(suggestion.newGroupTitle || '').trim();
+      if (!title) continue;
+      const key = `${tab.windowId || 'current'}::${title}`;
+      if (!newGroups.has(key)) newGroups.set(key, { title, tabIds: [] });
+      newGroups.get(key).tabIds.push(tab.id);
+    }
+  }
+
+  for (const [groupId, tabIds] of existingGroups.entries()) {
+    await browserApi.groupTabs({ tabIds, groupId });
+  }
+  const colors = ['blue', 'green', 'yellow', 'purple', 'cyan', 'pink'];
+  let colorIndex = 0;
+  for (const { title, tabIds } of newGroups.values()) {
+    const groupId = await browserApi.groupTabs({ tabIds });
+    if (groupId !== null && groupId !== undefined) {
+      await browserApi.updateGroup(groupId, { title, color: colors[colorIndex % colors.length] });
+      colorIndex += 1;
+    }
+  }
+
+  state = { ...state, smartGroupDraft: null };
+  await loadTabs();
+}
+
+async function changeBookmarkRemark(bookmarkId, value) {
+  const nextRemarks = { ...(state.settings.bookmarkRemarks || {}) };
+  const remark = String(value || '').trim();
+  if (remark) nextRemarks[String(bookmarkId)] = remark;
+  else delete nextRemarks[String(bookmarkId)];
+  await browserApi.saveSettings({ bookmarkRemarks: nextRemarks });
+  state = { ...state, settings: { ...state.settings, bookmarkRemarks: nextRemarks } };
   render();
 }
 
@@ -495,6 +657,9 @@ app.addEventListener('click', async event => {
   const action = target.dataset.action;
   if (action === 'reload') await loadTabs();
   if (action === 'save-grouping-rules') await saveGroupingRules();
+  if (action === 'open-smart-grouping') openSmartGrouping();
+  if (action === 'cancel-smart-grouping') { state = { ...state, smartGroupDraft: null }; render(); }
+  if (action === 'apply-smart-grouping') await applySmartGrouping();
   if (action === 'toggle-tab') toggleTab(Number(target.dataset.tabId));
   if (action === 'clear-domain') requestClearDomain(target.dataset.domain);
   if (action === 'clear-duplicates') requestClearDuplicates(target.dataset.domain);
@@ -510,11 +675,16 @@ app.addEventListener('click', async event => {
 });
 
 app.addEventListener('input', event => {
-  const target = event.target.closest('[data-setting="tab-search"]');
+  const target = event.target.closest('[data-setting]');
   if (!target) return;
-  state = { ...state, searchQuery: target.value };
-  const results = app.querySelector('[data-search-results]');
-  if (results) results.innerHTML = renderSearchResults();
+  if (target.dataset.setting === 'tab-search') {
+    state = { ...state, searchQuery: target.value };
+    const results = app.querySelector('[data-search-results]');
+    if (results) results.innerHTML = renderSearchResults();
+  }
+  if (target.dataset.setting === 'smart-new-title') {
+    changeSmartNewTitle(Number(target.dataset.tabId), target.value);
+  }
 });
 
 app.addEventListener('change', async event => {
@@ -523,6 +693,8 @@ app.addEventListener('change', async event => {
   if (target.dataset.setting === 'inactive-days') await changeInactiveDays(target.value);
   if (target.dataset.setting === 'auto-grouping-enabled') await changeAutoGroupingEnabled(target.checked);
   if (target.dataset.setting === 'domain-auto-grouping') await changeDomainAutoGrouping(target.dataset.domain, target.checked);
+  if (target.dataset.setting === 'smart-target') changeSmartTarget(Number(target.dataset.tabId), target.value);
+  if (target.dataset.setting === 'bookmark-remark') await changeBookmarkRemark(target.dataset.bookmarkId, target.value);
 });
 
 loadTabs();

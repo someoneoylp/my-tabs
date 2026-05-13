@@ -35,7 +35,8 @@ body {
 
 button,
 select,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -397,20 +398,32 @@ h1 {
 .bookmark-item {
   width: 100%;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 9px;
-  align-items: center;
-  border: 0;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  gap: 8px;
+  align-items: stretch;
   border-radius: 11px;
   padding: 8px 7px;
   background: transparent;
   color: var(--ink);
-  cursor: pointer;
   text-align: left;
 }
 
 .bookmark-item:hover {
   background: rgba(24, 32, 47, 0.045);
+}
+
+.bookmark-open {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 
 .bookmark-mark {
@@ -446,6 +459,24 @@ h1 {
 .bookmark-copy small {
   color: var(--faint);
   font-size: 11px;
+}
+
+.bookmark-remark {
+  min-width: 0;
+  height: 28px;
+  align-self: center;
+  border: 1px solid rgba(42, 35, 24, 0.08);
+  border-radius: 9px;
+  outline: 0;
+  padding: 0 8px;
+  background: rgba(255, 255, 252, 0.72);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bookmark-remark:focus {
+  border-color: rgba(34, 87, 122, 0.28);
+  color: var(--ink);
 }
 
 .card-grid {
@@ -787,6 +818,109 @@ h1 {
   background: var(--surface);
 }
 
+.smart-panel {
+  width: min(880px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.smart-panel-head,
+.smart-panel-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.smart-panel-head h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 460;
+}
+
+.smart-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  padding-right: 4px;
+}
+
+.smart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid rgba(42, 35, 24, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(248, 246, 240, 0.46);
+}
+
+.smart-tab-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.smart-tab-copy strong,
+.smart-tab-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-tab-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 460;
+}
+
+.smart-tab-copy span,
+.smart-tab-copy small {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.smart-controls {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.smart-controls select,
+.smart-controls input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(42, 35, 24, 0.1);
+  border-radius: 10px;
+  outline: 0;
+  padding: 0 10px;
+  background: rgba(255, 255, 252, 0.82);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.smart-controls input:disabled {
+  opacity: 0.42;
+}
+
+.smart-panel-footer {
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.empty-board.compact {
+  margin-top: 16px;
+  padding: 18px;
+}
+
 .confirm-dialog h2 {
   margin: 0 0 8px;
   font-size: 22px;
@@ -859,6 +993,17 @@ h1 {
   .card-grid,
   .bookmark-grid,
   .rules-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-panel-head,
+  .smart-panel-footer,
+  .smart-row {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .smart-controls {
     grid-template-columns: 1fr;
   }
 
