@@ -382,23 +382,28 @@ h1 {
 }
 
 .bookmark-grid {
-  columns: 300px;
-  column-gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 
 .bookmarks-section.is-editing .bookmark-grid {
-  columns: 430px;
+  grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
 }
 
 .bookmark-card {
-  display: inline-block;
-  width: 100%;
-  break-inside: avoid;
-  margin: 0 0 10px;
+  height: 244px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid rgba(42, 35, 24, 0.08);
   border-radius: 13px;
   background: rgba(255, 255, 252, 0.68);
+}
+
+.bookmarks-section.is-editing .bookmark-card {
+  height: 332px;
 }
 
 .bookmark-card-head {
@@ -433,7 +438,8 @@ h1 {
 }
 
 .bookmark-list {
-  max-height: 214px;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   padding: 0 6px 7px;
 }
@@ -446,6 +452,7 @@ h1 {
   align-items: stretch;
   border-radius: 9px;
   padding: 5px 5px;
+  min-height: 44px;
   background: transparent;
   color: var(--ink);
   text-align: left;
@@ -1075,7 +1082,7 @@ h1 {
 
   .bookmark-grid,
   .bookmarks-section.is-editing .bookmark-grid {
-    columns: 280px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   }
 }
 
@@ -1110,7 +1117,7 @@ h1 {
   }
 
   .bookmark-grid {
-    columns: 1;
+    grid-template-columns: 1fr;
   }
 
   .bookmark-edit-fields {
