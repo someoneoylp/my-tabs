@@ -364,13 +364,15 @@ h1 {
 }
 
 .bookmark-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  align-items: start;
+  column-count: 5;
+  column-gap: 10px;
 }
 
 .bookmark-card {
+  display: inline-block;
+  width: 100%;
+  break-inside: avoid;
+  margin: 0 0 10px;
   overflow: hidden;
   border: 1px solid rgba(42, 35, 24, 0.08);
   border-radius: 13px;
@@ -417,7 +419,7 @@ h1 {
 }
 
 .bookmarks-section.is-editing .bookmark-item {
-  grid-template-columns: minmax(0, 1fr) 86px;
+  grid-template-columns: 1fr;
 }
 
 .bookmark-item:hover {
@@ -473,11 +475,16 @@ h1 {
   font-size: 10px;
 }
 
-.bookmark-remark {
+.bookmark-edit-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 0.85fr) auto;
+  gap: 5px;
+  align-items: center;
+}
+
+.bookmark-edit-fields input {
   min-width: 0;
-  width: 92px;
   height: 25px;
-  align-self: center;
   border: 1px solid rgba(42, 35, 24, 0.08);
   border-radius: 8px;
   outline: 0;
@@ -487,7 +494,7 @@ h1 {
   font-size: 11px;
 }
 
-.bookmark-remark:focus {
+.bookmark-edit-fields input:focus {
   border-color: rgba(34, 87, 122, 0.28);
   color: var(--ink);
 }
@@ -1015,7 +1022,7 @@ h1 {
   }
 
   .bookmark-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-count: 3;
   }
 }
 
@@ -1045,8 +1052,15 @@ h1 {
   }
 
   .card-grid,
-  .bookmark-grid,
   .rules-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bookmark-grid {
+    column-count: 1;
+  }
+
+  .bookmark-edit-fields {
     grid-template-columns: 1fr;
   }
 
@@ -1058,8 +1072,7 @@ h1 {
   }
 
   .smart-card-grid,
-  .smart-item-actions,
-  .bookmark-grid {
+  .smart-item-actions {
     grid-template-columns: 1fr;
   }
 
