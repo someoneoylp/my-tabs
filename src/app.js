@@ -23,6 +23,7 @@ let state = {
   selectedTabIds: new Set(),
   searchQuery: '',
   smartGroupDraft: null,
+  editingBookmarkId: null,
   confirm: null
 };
 
@@ -237,6 +238,7 @@ function renderBookmarkCard(group) {
 function renderBookmarkItem(bookmark) {
   const domain = getDomain(bookmark.url);
   const remark = bookmarkRemark(bookmark.id);
+  const isEditing = state.editingBookmarkId === String(bookmark.id);
   return `
     <div class="bookmark-item" title="${escapeHtml(bookmark.url)}">
       <button class="bookmark-open" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
@@ -246,7 +248,13 @@ function renderBookmarkItem(bookmark) {
           <small>${escapeHtml(remark ? bookmark.title : bookmark.folder)}</small>
         </span>
       </button>
-      <input class="bookmark-remark" data-setting="bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(remark)}" placeholder="备注" aria-label="书签备注名" />
+      ${isEditing ? `
+        <input class="bookmark-remark is-editing" data-setting="bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(remark)}" placeholder="备注" aria-label="书签备注名" autofocus />
+      ` : `
+        <button class="bookmark-edit" data-action="edit-bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" title="${escapeHtml(remark || '设置备注')}">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.9 2.2 13.8 5 6.1 12.7 3 13.4l.7-3.1 7.2-8.1Zm1.1-1.1a1.4 1.4 0 0 1 2 0l.9.9a1.4 1.4 0 0 1 0 2l-.5.5-2.9-2.9.5-.5Z"/></svg>
+        </button>
+      `}
     </div>
   `;
 }
@@ -364,10 +372,30 @@ function smartSuggestionTab(suggestion) {
   return tabById(suggestion.tabId);
 }
 
+function smartTargetLabel(suggestion) {
+  if (suggestion.targetMode === 'existing') {
+    return state.smartGroupDraft.existingGroups.find(group => group.id === Number(suggestion.targetGroupId))?.title || '已有分组';
+  }
+  if (suggestion.targetMode === 'new') return suggestion.newGroupTitle || '新建分组';
+  return '已移除';
+}
+
+function smartGroupedSuggestions() {
+  const groups = new Map();
+  for (const suggestion of state.smartGroupDraft.suggestions) {
+    if (suggestion.targetMode === 'skip') continue;
+    const label = smartTargetLabel(suggestion);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(suggestion);
+  }
+  return [...groups.entries()].map(([title, suggestions]) => ({ title, suggestions }));
+}
+
 function renderSmartGroupPanel() {
   if (!state.smartGroupDraft) return '';
   const suggestions = state.smartGroupDraft.suggestions;
   const activeSuggestions = suggestions.filter(suggestion => suggestion.targetMode !== 'skip');
+  const groupedSuggestions = smartGroupedSuggestions();
 
   return `
     <div class="confirm-backdrop">
@@ -381,34 +409,18 @@ function renderSmartGroupPanel() {
           <button class="link-button" data-action="cancel-smart-grouping">关闭</button>
         </div>
         ${suggestions.length === 0 ? '<div class="empty-board compact">当前没有可自动分组的未分组 Tab。</div>' : `
-          <div class="smart-list">
-            ${suggestions.map(suggestion => {
-              const tab = smartSuggestionTab(suggestion);
-              if (!tab) return '';
-              const selectedValue = suggestion.targetMode === 'existing' ? `existing:${suggestion.targetGroupId}` : suggestion.targetMode;
-              const existingOptions = state.smartGroupDraft.existingGroups
-                .filter(group => group.windowId === undefined || tab.windowId === undefined || group.windowId === tab.windowId)
-                .map(group => `
-                <option value="existing:${group.id}" ${selectedValue === `existing:${group.id}` ? 'selected' : ''}>${escapeHtml(group.title)}</option>
-              `).join('');
-              return `
-                <div class="smart-row">
-                  <div class="smart-tab-copy">
-                    <strong>${escapeHtml(tab.title)}</strong>
-                    <span>${escapeHtml(getDomain(tab.url))}</span>
-                    <small>${escapeHtml(suggestion.reason)}</small>
-                  </div>
-                  <div class="smart-controls">
-                    <select data-setting="smart-target" data-tab-id="${tab.id}">
-                      ${existingOptions}
-                      <option value="new" ${selectedValue === 'new' ? 'selected' : ''}>新建分组</option>
-                      <option value="skip" ${selectedValue === 'skip' ? 'selected' : ''}>跳过</option>
-                    </select>
-                    <input data-setting="smart-new-title" data-tab-id="${tab.id}" value="${escapeHtml(suggestion.newGroupTitle || '')}" placeholder="新分组名" ${suggestion.targetMode === 'new' ? '' : 'disabled'} />
-                  </div>
+          <div class="smart-card-grid">
+            ${groupedSuggestions.map(group => `
+              <article class="smart-group-card">
+                <div class="smart-group-head">
+                  <h3>${escapeHtml(group.title)}</h3>
+                  <span>${group.suggestions.length} 个 Tab</span>
                 </div>
-              `;
-            }).join('')}
+                <div class="smart-url-list">
+                  ${group.suggestions.map(suggestion => renderSmartSuggestionItem(suggestion)).join('')}
+                </div>
+              </article>
+            `).join('')}
           </div>
           <div class="smart-panel-footer">
             <span>将处理 ${activeSuggestions.length} 个 Tab</span>
@@ -419,6 +431,33 @@ function renderSmartGroupPanel() {
           </div>
         `}
       </section>
+    </div>
+  `;
+}
+
+function renderSmartSuggestionItem(suggestion) {
+  const tab = smartSuggestionTab(suggestion);
+  if (!tab) return '';
+  const selectedValue = suggestion.targetMode === 'existing' ? `existing:${suggestion.targetGroupId}` : suggestion.targetMode;
+  const existingOptions = state.smartGroupDraft.existingGroups
+    .filter(group => group.windowId === undefined || tab.windowId === undefined || group.windowId === tab.windowId)
+    .map(group => `<option value="existing:${group.id}" ${selectedValue === `existing:${group.id}` ? 'selected' : ''}>${escapeHtml(group.title)}</option>`)
+    .join('');
+  return `
+    <div class="smart-url-item">
+      <div class="smart-tab-copy">
+        <strong>${escapeHtml(tab.title)}</strong>
+        <span>${escapeHtml(tab.url)}</span>
+        <small>${escapeHtml(suggestion.reason)}</small>
+      </div>
+      <div class="smart-item-actions">
+        <button class="link-button" data-action="skip-smart-tab" data-tab-id="${tab.id}">删除</button>
+        <select data-setting="smart-target" data-tab-id="${tab.id}" title="移动到分组">
+          ${existingOptions}
+          <option value="new" ${selectedValue === 'new' ? 'selected' : ''}>新建分组</option>
+        </select>
+        <input data-setting="smart-new-title" data-tab-id="${tab.id}" value="${escapeHtml(suggestion.newGroupTitle || '')}" placeholder="新分组名" ${suggestion.targetMode === 'new' ? '' : 'disabled'} />
+      </div>
     </div>
   `;
 }
@@ -525,6 +564,11 @@ function changeSmartNewTitle(tabId, value) {
   updateSmartSuggestion(tabId, suggestion => ({ ...suggestion, newGroupTitle: value }));
 }
 
+function skipSmartTab(tabId) {
+  updateSmartSuggestion(tabId, suggestion => ({ ...suggestion, targetMode: 'skip', targetGroupId: null }));
+  render();
+}
+
 async function applySmartGrouping() {
   if (!state.smartGroupDraft) return;
   const existingGroups = new Map();
@@ -570,7 +614,7 @@ async function changeBookmarkRemark(bookmarkId, value) {
   if (remark) nextRemarks[String(bookmarkId)] = remark;
   else delete nextRemarks[String(bookmarkId)];
   await browserApi.saveSettings({ bookmarkRemarks: nextRemarks });
-  state = { ...state, settings: { ...state.settings, bookmarkRemarks: nextRemarks } };
+  state = { ...state, editingBookmarkId: null, settings: { ...state.settings, bookmarkRemarks: nextRemarks } };
   render();
 }
 
@@ -660,6 +704,8 @@ app.addEventListener('click', async event => {
   if (action === 'open-smart-grouping') openSmartGrouping();
   if (action === 'cancel-smart-grouping') { state = { ...state, smartGroupDraft: null }; render(); }
   if (action === 'apply-smart-grouping') await applySmartGrouping();
+  if (action === 'skip-smart-tab') skipSmartTab(Number(target.dataset.tabId));
+  if (action === 'edit-bookmark-remark') { state = { ...state, editingBookmarkId: String(target.dataset.bookmarkId) }; render(); app.querySelector(`[data-setting="bookmark-remark"][data-bookmark-id="${CSS.escape(String(target.dataset.bookmarkId))}"]`)?.focus(); }
   if (action === 'toggle-tab') toggleTab(Number(target.dataset.tabId));
   if (action === 'clear-domain') requestClearDomain(target.dataset.domain);
   if (action === 'clear-duplicates') requestClearDuplicates(target.dataset.domain);
