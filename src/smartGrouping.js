@@ -1,5 +1,4 @@
-import { DEFAULT_RULES_TEXT } from './defaultRules.js';
-import { findMatchingRule, mergeRules, parseRulesText, titleMatchScore } from './groupingRules.js';
+import { titleMatchScore } from './groupingRules.js';
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase();
@@ -17,14 +16,6 @@ function domainFromUrl(url) {
   }
 }
 
-function findGroupByRule(rule, groups) {
-  if (!rule) return null;
-  const ruleName = normalize(rule.name);
-  return groups.find(group => normalize(group.title) === ruleName)
-    || groups.find(group => titleMatchScore(group.title, rule) > 0)
-    || null;
-}
-
 function findGroupByTitle(tab, groups) {
   return groups
     .map((group, index) => ({ group, index, score: titleMatchScore(tab.title, { name: group.title }) }))
@@ -32,7 +23,12 @@ function findGroupByTitle(tab, groups) {
     .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.group || null;
 }
 
-function suggestionForTab(tab, groups, rules) {
+function findGroupByDomain(tab, groups) {
+  const domain = normalize(domainFromUrl(tab.url));
+  return groups.find(group => normalize(group.title) === domain) || null;
+}
+
+function suggestionForTab(tab, groups) {
   const candidateGroups = groups.filter(group => group.windowId === undefined || tab.windowId === undefined || group.windowId === tab.windowId);
   const titleGroup = findGroupByTitle(tab, candidateGroups);
   if (titleGroup) {
@@ -40,30 +36,21 @@ function suggestionForTab(tab, groups, rules) {
       tabId: tab.id,
       targetMode: 'existing',
       targetGroupId: titleGroup.id,
+      targetTitleOverride: '',
       newGroupTitle: '',
-      reason: `标题匹配「${titleGroup.title}」`
+      reason: `匹配已有分组「${titleGroup.title}」`
     };
   }
 
-  const rule = findMatchingRule(tab, rules);
-  const ruleGroup = findGroupByRule(rule, candidateGroups);
-  if (ruleGroup) {
+  const domainGroup = findGroupByDomain(tab, candidateGroups);
+  if (domainGroup) {
     return {
       tabId: tab.id,
       targetMode: 'existing',
-      targetGroupId: ruleGroup.id,
+      targetGroupId: domainGroup.id,
+      targetTitleOverride: '',
       newGroupTitle: '',
-      reason: `规则匹配「${rule.name}」`
-    };
-  }
-
-  if (rule) {
-    return {
-      tabId: tab.id,
-      targetMode: 'new',
-      targetGroupId: null,
-      newGroupTitle: rule.name,
-      reason: `建议新建规则分组`
+      reason: `域名匹配已有分组「${domainGroup.title}」`
     };
   }
 
@@ -71,8 +58,9 @@ function suggestionForTab(tab, groups, rules) {
     tabId: tab.id,
     targetMode: 'new',
     targetGroupId: null,
+    targetTitleOverride: '',
     newGroupTitle: domainFromUrl(tab.url),
-    reason: '按域名建议新分组'
+    reason: '按域名新建分组'
   };
 }
 
@@ -83,11 +71,10 @@ export function getUngroupedTabs(tabs) {
     .filter(tab => isManageableUrl(tab.url));
 }
 
-export function createSmartGroupDraft({ tabs, groups, rulesText }) {
-  const rules = mergeRules(parseRulesText(rulesText), parseRulesText(DEFAULT_RULES_TEXT));
+export function createSmartGroupDraft({ tabs, groups }) {
   const ungroupedTabs = getUngroupedTabs(tabs);
   return {
-    suggestions: ungroupedTabs.map(tab => suggestionForTab(tab, groups, rules)),
+    suggestions: ungroupedTabs.map(tab => suggestionForTab(tab, groups)),
     existingGroups: groups.map(group => ({
       id: group.id,
       windowId: group.windowId,

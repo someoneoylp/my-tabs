@@ -449,6 +449,7 @@ function smartSuggestionTab(suggestion) {
 }
 
 function smartTargetLabel(suggestion) {
+  if (suggestion.targetTitleOverride) return suggestion.targetTitleOverride;
   if (suggestion.targetMode === 'existing') {
     return state.smartGroupDraft.existingGroups.find(group => group.id === Number(suggestion.targetGroupId))?.title || '已有分组';
   }
@@ -465,6 +466,41 @@ function smartGroupedSuggestions() {
     groups.get(label).push(suggestion);
   }
   return [...groups.entries()].map(([title, suggestions]) => ({ title, suggestions }));
+}
+
+function smartTargetKey(suggestion) {
+  if (suggestion.targetMode === 'existing') return `existing:${suggestion.targetGroupId}`;
+  return `new:${smartTargetLabel(suggestion)}`;
+}
+
+function smartExistingGroupDisplayTitle(group) {
+  const renamedSuggestion = state.smartGroupDraft.suggestions.find(suggestion =>
+    suggestion.targetMode === 'existing' &&
+    Number(suggestion.targetGroupId) === Number(group.id) &&
+    suggestion.targetTitleOverride
+  );
+  return renamedSuggestion?.targetTitleOverride || group.title;
+}
+
+function smartTargetOptions(tab, selectedKey) {
+  const options = [];
+  const seen = new Set();
+  for (const group of state.smartGroupDraft.existingGroups) {
+    if (group.windowId !== undefined && tab.windowId !== undefined && group.windowId !== tab.windowId) continue;
+    const key = `existing:${group.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push({ key, label: smartExistingGroupDisplayTitle(group) });
+  }
+  for (const group of smartGroupedSuggestions()) {
+    const key = `new:${group.title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push({ key, label: group.title });
+  }
+  return options
+    .map(option => `<option value="${escapeHtml(option.key)}" ${selectedKey === option.key ? 'selected' : ''}>${escapeHtml(option.label)}</option>`)
+    .join('');
 }
 
 function renderSmartGroupPanel() {
@@ -489,7 +525,7 @@ function renderSmartGroupPanel() {
             ${groupedSuggestions.map(group => `
               <article class="smart-group-card">
                 <div class="smart-group-head">
-                  <h3>${escapeHtml(group.title)}</h3>
+                  <input class="smart-group-title" data-setting="smart-group-title" data-group-title="${escapeHtml(group.title)}" value="${escapeHtml(group.title)}" aria-label="分组名称" />
                   <span>${group.suggestions.length} 个 Tab</span>
                 </div>
                 <div class="smart-url-list">
@@ -514,11 +550,7 @@ function renderSmartGroupPanel() {
 function renderSmartSuggestionItem(suggestion) {
   const tab = smartSuggestionTab(suggestion);
   if (!tab) return '';
-  const selectedValue = suggestion.targetMode === 'existing' ? `existing:${suggestion.targetGroupId}` : suggestion.targetMode;
-  const existingOptions = state.smartGroupDraft.existingGroups
-    .filter(group => group.windowId === undefined || tab.windowId === undefined || group.windowId === tab.windowId)
-    .map(group => `<option value="existing:${group.id}" ${selectedValue === `existing:${group.id}` ? 'selected' : ''}>${escapeHtml(group.title)}</option>`)
-    .join('');
+  const selectedKey = smartTargetKey(suggestion);
   return `
     <div class="smart-url-item">
       <div class="smart-tab-copy">
@@ -529,10 +561,8 @@ function renderSmartSuggestionItem(suggestion) {
       <div class="smart-item-actions">
         <button class="link-button" data-action="skip-smart-tab" data-tab-id="${tab.id}">删除</button>
         <select data-setting="smart-target" data-tab-id="${tab.id}" title="移动到分组">
-          ${existingOptions}
-          <option value="new" ${selectedValue === 'new' ? 'selected' : ''}>新建分组</option>
+          ${smartTargetOptions(tab, selectedKey)}
         </select>
-        <input data-setting="smart-new-title" data-tab-id="${tab.id}" value="${escapeHtml(suggestion.newGroupTitle || '')}" placeholder="新分组名" ${suggestion.targetMode === 'new' ? '' : 'disabled'} />
       </div>
     </div>
   `;
@@ -610,8 +640,7 @@ async function saveGroupingRules() {
 function openSmartGrouping() {
   const draft = createSmartGroupDraft({
     tabs: state.tabs,
-    groups: state.tabGroups,
-    rulesText: state.settings.groupingRulesText
+    groups: state.tabGroups
   });
   state = { ...state, smartGroupDraft: draft };
   render();
@@ -628,16 +657,26 @@ function updateSmartSuggestion(tabId, updater) {
 
 function changeSmartTarget(tabId, value) {
   updateSmartSuggestion(tabId, suggestion => {
-    if (value === 'skip') return { ...suggestion, targetMode: 'skip', targetGroupId: null };
-    if (value === 'new') return { ...suggestion, targetMode: 'new', targetGroupId: null, newGroupTitle: suggestion.newGroupTitle || getDomain(tabById(tabId)?.url) };
-    const groupId = Number(value.replace('existing:', ''));
-    return { ...suggestion, targetMode: 'existing', targetGroupId: groupId };
+    if (value.startsWith('existing:')) {
+      const groupId = Number(value.replace('existing:', ''));
+      return { ...suggestion, targetMode: 'existing', targetGroupId: groupId, targetTitleOverride: '', newGroupTitle: '' };
+    }
+    const title = value.replace(/^new:/, '').trim();
+    return { ...suggestion, targetMode: 'new', targetGroupId: null, targetTitleOverride: '', newGroupTitle: title || getDomain(tabById(tabId)?.url) };
   });
   render();
 }
 
-function changeSmartNewTitle(tabId, value) {
-  updateSmartSuggestion(tabId, suggestion => ({ ...suggestion, newGroupTitle: value }));
+function renameSmartGroupTitle(oldTitle, nextTitle) {
+  const title = String(nextTitle || '').trim();
+  if (!title || title === oldTitle) return;
+  const suggestions = state.smartGroupDraft.suggestions.map(suggestion => {
+    if (smartTargetLabel(suggestion) !== oldTitle) return suggestion;
+    if (suggestion.targetMode === 'existing') return { ...suggestion, targetTitleOverride: title };
+    return { ...suggestion, newGroupTitle: title };
+  });
+  state = { ...state, smartGroupDraft: { ...state.smartGroupDraft, suggestions } };
+  render();
 }
 
 function skipSmartTab(tabId) {
@@ -655,8 +694,10 @@ async function applySmartGrouping() {
     if (!tab || tab.pinned || suggestion.targetMode === 'skip') continue;
     if (suggestion.targetMode === 'existing' && suggestion.targetGroupId !== null) {
       const key = Number(suggestion.targetGroupId);
-      if (!existingGroups.has(key)) existingGroups.set(key, []);
-      existingGroups.get(key).push(tab.id);
+      if (!existingGroups.has(key)) existingGroups.set(key, { title: suggestion.targetTitleOverride || '', tabIds: [] });
+      const entry = existingGroups.get(key);
+      if (suggestion.targetTitleOverride) entry.title = suggestion.targetTitleOverride;
+      entry.tabIds.push(tab.id);
     }
     if (suggestion.targetMode === 'new') {
       const title = String(suggestion.newGroupTitle || '').trim();
@@ -667,8 +708,9 @@ async function applySmartGrouping() {
     }
   }
 
-  for (const [groupId, tabIds] of existingGroups.entries()) {
+  for (const [groupId, { title, tabIds }] of existingGroups.entries()) {
     await browserApi.groupTabs({ tabIds, groupId });
+    if (title) await browserApi.updateGroup(groupId, { title });
   }
   const colors = ['blue', 'green', 'yellow', 'purple', 'cyan', 'pink'];
   let colorIndex = 0;
@@ -923,9 +965,6 @@ app.addEventListener('input', event => {
     const results = app.querySelector('[data-search-results]');
     if (results) results.innerHTML = renderSearchResults();
   }
-  if (target.dataset.setting === 'smart-new-title') {
-    changeSmartNewTitle(Number(target.dataset.tabId), target.value);
-  }
   if (target.dataset.setting === 'bookmark-title') {
     changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
   }
@@ -938,6 +977,7 @@ app.addEventListener('change', async event => {
   if (target.dataset.setting === 'auto-grouping-enabled') await changeAutoGroupingEnabled(target.checked);
   if (target.dataset.setting === 'domain-auto-grouping') await changeDomainAutoGrouping(target.dataset.domain, target.checked);
   if (target.dataset.setting === 'smart-target') changeSmartTarget(Number(target.dataset.tabId), target.value);
+  if (target.dataset.setting === 'smart-group-title') renameSmartGroupTitle(target.dataset.groupTitle, target.value);
   if (target.dataset.setting === 'bookmark-title') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
   if (target.dataset.setting === 'bookmark-group') { changeBookmarkMetaDraft(target.dataset.bookmarkId, 'group', target.value); render(); }
   if (target.dataset.setting === 'bookmark-group-title') renameBookmarkGroupDraft(target.dataset.groupName, target.value);
