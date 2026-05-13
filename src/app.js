@@ -18,8 +18,8 @@ let state = {
     groupingRulesText: DEFAULT_RULES_TEXT,
     autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
     disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS,
-    bookmarkRemarks: {},
     bookmarkMeta: {},
+    bookmarkOrder: [],
     bookmarksCollapsed: false
   },
   selectedTabIds: new Set(),
@@ -27,6 +27,7 @@ let state = {
   smartGroupDraft: null,
   bookmarksEditing: false,
   bookmarkMetaDraft: {},
+  bookmarkOrderDraft: [],
   bookmarkDeleteDraft: new Set(),
   confirm: null
 };
@@ -36,7 +37,7 @@ function escapeHtml(value) {
 }
 
 async function loadTabs() {
-  state = { ...state, status: 'loading', confirm: null, smartGroupDraft: null, bookmarksEditing: false, bookmarkMetaDraft: {}, bookmarkDeleteDraft: new Set(), selectedTabIds: new Set() };
+  state = { ...state, status: 'loading', confirm: null, smartGroupDraft: null, bookmarksEditing: false, bookmarkMetaDraft: {}, bookmarkOrderDraft: [], bookmarkDeleteDraft: new Set(), selectedTabIds: new Set() };
   render();
   try {
     const [tabs, tabGroups, bookmarks, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getTabGroups(), browserApi.getBookmarks(), browserApi.getSettings()]);
@@ -101,10 +102,7 @@ function bookmarkById(id) {
 
 function storedBookmarkMeta(bookmarkId) {
   const id = String(bookmarkId);
-  return {
-    remark: state.settings.bookmarkRemarks?.[id] || '',
-    ...(state.settings.bookmarkMeta?.[id] || {})
-  };
+  return state.settings.bookmarkMeta?.[id] || {};
 }
 
 function bookmarkMeta(bookmarkId) {
@@ -116,12 +114,32 @@ function bookmarkTitle(bookmark) {
   return String(bookmarkMeta(bookmark.id).title || bookmark.title || bookmark.url || '').trim();
 }
 
-function bookmarkRemark(bookmarkId) {
-  return String(bookmarkMeta(bookmarkId).remark || '').trim();
-}
-
 function bookmarkGroupName(bookmark) {
   return String(bookmarkMeta(bookmark.id).group || getDomain(bookmark.url)).trim() || getDomain(bookmark.url);
+}
+
+function bookmarkOrderList() {
+  const saved = state.bookmarksEditing ? state.bookmarkOrderDraft : state.settings.bookmarkOrder;
+  const seen = new Set();
+  const ordered = [];
+  for (const id of saved || []) {
+    const stringId = String(id);
+    if (seen.has(stringId) || !bookmarkById(stringId)) continue;
+    seen.add(stringId);
+    ordered.push(stringId);
+  }
+  for (const bookmark of state.bookmarks) {
+    const id = String(bookmark.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
+  }
+  return ordered;
+}
+
+function bookmarkOrderIndex(bookmarkId) {
+  const index = bookmarkOrderList().indexOf(String(bookmarkId));
+  return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
 }
 
 function bookmarkDomainGroups() {
@@ -137,7 +155,12 @@ function bookmarkDomainGroups() {
       groupName,
       bookmarks: bookmarks.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0))
     }))
-    .sort((a, b) => b.bookmarks.length - a.bookmarks.length || a.groupName.localeCompare(b.groupName));
+    .map(group => ({
+      ...group,
+      bookmarks: group.bookmarks.sort((a, b) => bookmarkOrderIndex(a.id) - bookmarkOrderIndex(b.id)),
+      firstOrder: Math.min(...group.bookmarks.map(bookmark => bookmarkOrderIndex(bookmark.id)))
+    }))
+    .sort((a, b) => a.firstOrder - b.firstOrder || a.groupName.localeCompare(b.groupName));
 }
 
 function bookmarkGroupNames() {
@@ -152,8 +175,8 @@ function searchResults() {
     .sort((a, b) => Number(b.active) - Number(a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0))
     .slice(0, 6);
   const bookmarks = state.bookmarks
-    .filter(bookmark => `${bookmarkTitle(bookmark)}\n${bookmark.title || ''}\n${bookmark.url || ''}\n${bookmark.folder || ''}\n${bookmarkRemark(bookmark.id)}\n${bookmarkGroupName(bookmark)}`.toLowerCase().includes(query))
-    .sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0))
+    .filter(bookmark => `${bookmarkTitle(bookmark)}\n${bookmark.title || ''}\n${bookmark.url || ''}\n${bookmark.folder || ''}\n${bookmarkGroupName(bookmark)}`.toLowerCase().includes(query))
+    .sort((a, b) => bookmarkOrderIndex(a.id) - bookmarkOrderIndex(b.id))
     .slice(0, 8);
   return { tabs, bookmarks };
 }
@@ -175,11 +198,10 @@ function renderSearchResults() {
         </button>
       `).join('')}
       ${results.bookmarks.map(bookmark => {
-        const remark = bookmarkRemark(bookmark.id);
         const title = bookmarkTitle(bookmark);
         return `
         <button class="search-result" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
-          <span class="search-title">${escapeHtml(remark ? `${remark} · ${title}` : title)}</span>
+          <span class="search-title">${escapeHtml(title)}</span>
           <span class="search-meta">书签 · ${escapeHtml(bookmarkGroupName(bookmark))}</span>
           <span class="search-url">${escapeHtml(bookmark.url)}</span>
         </button>
@@ -284,7 +306,6 @@ function renderBookmarkCard(group) {
 
 function renderBookmarkItem(bookmark) {
   const domain = getDomain(bookmark.url);
-  const remark = bookmarkRemark(bookmark.id);
   const title = bookmarkTitle(bookmark);
   const groupName = bookmarkGroupName(bookmark);
   const groupOptions = bookmarkGroupNames()
@@ -295,8 +316,8 @@ function renderBookmarkItem(bookmark) {
       <button class="bookmark-open" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
         <span class="bookmark-mark">${escapeHtml(domain.slice(0, 1).toUpperCase())}</span>
         <span class="bookmark-copy">
-          <span>${escapeHtml(remark || title)}</span>
-          <small>${escapeHtml(remark ? title : bookmark.folder)}</small>
+          <span>${escapeHtml(title)}</span>
+          <small>${escapeHtml(bookmark.folder)}</small>
         </span>
       </button>
       ${state.bookmarksEditing ? `
@@ -305,7 +326,8 @@ function renderBookmarkItem(bookmark) {
           <select data-setting="bookmark-group" data-bookmark-id="${escapeHtml(bookmark.id)}" aria-label="书签分组">
             ${groupOptions}
           </select>
-          <input data-setting="bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(remark)}" placeholder="备注" aria-label="书签备注" />
+          <button class="link-button" data-action="move-bookmark-draft" data-bookmark-id="${escapeHtml(bookmark.id)}" data-direction="-1">上移</button>
+          <button class="link-button" data-action="move-bookmark-draft" data-bookmark-id="${escapeHtml(bookmark.id)}" data-direction="1">下移</button>
           <button class="link-button danger" data-action="delete-bookmark-draft" data-bookmark-id="${escapeHtml(bookmark.id)}">删除</button>
         </div>
       ` : ''}
@@ -667,21 +689,22 @@ function editBookmarks() {
   for (const bookmark of state.bookmarks) {
     bookmarkMetaDraft[String(bookmark.id)] = {
       title: bookmarkTitle(bookmark),
-      group: bookmarkGroupName(bookmark),
-      remark: bookmarkRemark(bookmark.id)
+      group: bookmarkGroupName(bookmark)
     };
   }
+  const bookmarkOrderDraft = bookmarkOrderList();
   state = {
     ...state,
     bookmarksEditing: true,
     bookmarkMetaDraft,
+    bookmarkOrderDraft,
     bookmarkDeleteDraft: new Set()
   };
   render();
 }
 
 function cancelBookmarkEdit() {
-  state = { ...state, bookmarksEditing: false, bookmarkMetaDraft: {}, bookmarkDeleteDraft: new Set() };
+  state = { ...state, bookmarksEditing: false, bookmarkMetaDraft: {}, bookmarkOrderDraft: [], bookmarkDeleteDraft: new Set() };
   render();
 }
 
@@ -690,8 +713,7 @@ function changeBookmarkMetaDraft(bookmarkId, key, value) {
   const bookmark = bookmarkById(id);
   const current = state.bookmarkMetaDraft?.[id] || {
     title: bookmark?.title || '',
-    group: bookmark ? getDomain(bookmark.url) : '',
-    remark: ''
+    group: bookmark ? getDomain(bookmark.url) : ''
   };
   state = {
     ...state,
@@ -711,14 +733,25 @@ function renameBookmarkGroupDraft(oldGroupName, newGroupName) {
     if (state.bookmarkDeleteDraft.has(id)) continue;
     const current = nextDraft[id] || {
       title: bookmark.title || '',
-      group: getDomain(bookmark.url),
-      remark: ''
+      group: getDomain(bookmark.url)
     };
     if (String(current.group || getDomain(bookmark.url)).trim() === oldGroupName) {
       nextDraft[id] = { ...current, group: nextGroupName };
     }
   }
   state = { ...state, bookmarkMetaDraft: nextDraft };
+  render();
+}
+
+function moveBookmarkDraft(bookmarkId, direction) {
+  const id = String(bookmarkId);
+  const order = bookmarkOrderList().filter(bookmarkIdValue => !state.bookmarkDeleteDraft.has(bookmarkIdValue));
+  const index = order.indexOf(id);
+  const nextIndex = index + Number(direction);
+  if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+  const nextOrder = [...order];
+  [nextOrder[index], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[index]];
+  state = { ...state, bookmarkOrderDraft: nextOrder };
   render();
 }
 
@@ -743,26 +776,21 @@ async function saveBookmarkEdits() {
   }
 
   const nextMeta = {};
-  const nextRemarks = {};
   for (const bookmark of state.bookmarks) {
     const id = String(bookmark.id);
     if (state.bookmarkDeleteDraft.has(id)) continue;
     const draft = state.bookmarkMetaDraft?.[id] || {};
     const title = String(draft.title || '').trim();
     const group = String(draft.group || '').trim();
-    const remark = String(draft.remark || '').trim();
     const meta = {};
     if (group && group !== getDomain(bookmark.url)) meta.group = group;
-    if (remark) {
-      meta.remark = remark;
-      nextRemarks[id] = remark;
-    }
     if (Object.keys(meta).length > 0) nextMeta[id] = meta;
     if (title && title !== bookmark.title) {
       await browserApi.updateBookmark(id, { title });
     }
   }
-  await browserApi.saveSettings({ bookmarkMeta: nextMeta, bookmarkRemarks: nextRemarks });
+  const bookmarkOrder = bookmarkOrderList().filter(bookmarkId => !state.bookmarkDeleteDraft.has(bookmarkId));
+  await browserApi.saveSettings({ bookmarkMeta: nextMeta, bookmarkOrder });
   state = {
     ...state,
     bookmarksEditing: false,
@@ -773,8 +801,9 @@ async function saveBookmarkEdits() {
         return title ? { ...bookmark, title } : bookmark;
       }),
     bookmarkMetaDraft: {},
+    bookmarkOrderDraft: [],
     bookmarkDeleteDraft: new Set(),
-    settings: { ...state.settings, bookmarkMeta: nextMeta, bookmarkRemarks: nextRemarks }
+    settings: { ...state.settings, bookmarkMeta: nextMeta, bookmarkOrder }
   };
   render();
 }
@@ -870,6 +899,7 @@ app.addEventListener('click', async event => {
   if (action === 'cancel-bookmark-edit') cancelBookmarkEdit();
   if (action === 'save-bookmark-edits') await saveBookmarkEdits();
   if (action === 'delete-bookmark-draft') deleteBookmarkDraft(target.dataset.bookmarkId);
+  if (action === 'move-bookmark-draft') moveBookmarkDraft(target.dataset.bookmarkId, Number(target.dataset.direction));
   if (action === 'toggle-bookmarks-collapse') await toggleBookmarksCollapse();
   if (action === 'toggle-tab') toggleTab(Number(target.dataset.tabId));
   if (action === 'clear-domain') requestClearDomain(target.dataset.domain);
@@ -896,9 +926,6 @@ app.addEventListener('input', event => {
   if (target.dataset.setting === 'smart-new-title') {
     changeSmartNewTitle(Number(target.dataset.tabId), target.value);
   }
-  if (target.dataset.setting === 'bookmark-remark') {
-    changeBookmarkMetaDraft(target.dataset.bookmarkId, 'remark', target.value);
-  }
   if (target.dataset.setting === 'bookmark-title') {
     changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
   }
@@ -911,7 +938,6 @@ app.addEventListener('change', async event => {
   if (target.dataset.setting === 'auto-grouping-enabled') await changeAutoGroupingEnabled(target.checked);
   if (target.dataset.setting === 'domain-auto-grouping') await changeDomainAutoGrouping(target.dataset.domain, target.checked);
   if (target.dataset.setting === 'smart-target') changeSmartTarget(Number(target.dataset.tabId), target.value);
-  if (target.dataset.setting === 'bookmark-remark') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'remark', target.value);
   if (target.dataset.setting === 'bookmark-title') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
   if (target.dataset.setting === 'bookmark-group') { changeBookmarkMetaDraft(target.dataset.bookmarkId, 'group', target.value); render(); }
   if (target.dataset.setting === 'bookmark-group-title') renameBookmarkGroupDraft(target.dataset.groupName, target.value);

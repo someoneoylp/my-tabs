@@ -115,8 +115,8 @@ export const browserApi = {
       groupingRulesText: DEFAULT_RULES_TEXT,
       autoGroupingEnabled: DEFAULT_AUTO_GROUPING_ENABLED,
       disabledAutoGroupDomains: DEFAULT_DISABLED_AUTO_GROUP_DOMAINS,
-      bookmarkRemarks: {},
       bookmarkMeta: {},
+      bookmarkOrder: [],
       bookmarksCollapsed: false
     });
     const groupingRules = mergeRules(parseRulesText(result.groupingRulesText), parseRulesText(DEFAULT_RULES_TEXT));
@@ -124,8 +124,8 @@ export const browserApi = {
     return {
       inactiveDays: Number(result.inactiveDays) || 3,
       groupingRulesText: serializeRules(groupingRules),
-      bookmarkRemarks: result.bookmarkRemarks && typeof result.bookmarkRemarks === 'object' ? result.bookmarkRemarks : {},
       bookmarkMeta: result.bookmarkMeta && typeof result.bookmarkMeta === 'object' ? result.bookmarkMeta : {},
+      bookmarkOrder: Array.isArray(result.bookmarkOrder) ? result.bookmarkOrder.map(String) : [],
       bookmarksCollapsed: Boolean(result.bookmarksCollapsed),
       ...autoGroupingSettings
     };
