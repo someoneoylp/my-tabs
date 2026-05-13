@@ -355,6 +355,14 @@ h1 {
   white-space: nowrap;
 }
 
+.bookmark-toolbar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .bookmark-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -398,7 +406,7 @@ h1 {
 .bookmark-item {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   align-items: stretch;
   border-radius: 9px;
@@ -406,6 +414,10 @@ h1 {
   background: transparent;
   color: var(--ink);
   text-align: left;
+}
+
+.bookmarks-section.is-editing .bookmark-item {
+  grid-template-columns: minmax(0, 1fr) 86px;
 }
 
 .bookmark-item:hover {
@@ -478,30 +490,6 @@ h1 {
 .bookmark-remark:focus {
   border-color: rgba(34, 87, 122, 0.28);
   color: var(--ink);
-}
-
-.bookmark-edit {
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  align-self: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--faint);
-  cursor: pointer;
-}
-
-.bookmark-edit:hover {
-  background: rgba(24, 32, 47, 0.055);
-  color: var(--accent);
-}
-
-.bookmark-edit svg {
-  width: 13px;
-  height: 13px;
-  fill: currentColor;
 }
 
 .card-grid {

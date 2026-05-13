@@ -23,7 +23,8 @@ let state = {
   selectedTabIds: new Set(),
   searchQuery: '',
   smartGroupDraft: null,
-  editingBookmarkId: null,
+  bookmarksEditing: false,
+  bookmarkRemarkDraft: {},
   confirm: null
 };
 
@@ -32,7 +33,7 @@ function escapeHtml(value) {
 }
 
 async function loadTabs() {
-  state = { ...state, status: 'loading', confirm: null, smartGroupDraft: null, selectedTabIds: new Set() };
+  state = { ...state, status: 'loading', confirm: null, smartGroupDraft: null, bookmarksEditing: false, bookmarkRemarkDraft: {}, selectedTabIds: new Set() };
   render();
   try {
     const [tabs, tabGroups, bookmarks, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getTabGroups(), browserApi.getBookmarks(), browserApi.getSettings()]);
@@ -96,6 +97,9 @@ function bookmarkById(id) {
 }
 
 function bookmarkRemark(bookmarkId) {
+  if (state.bookmarksEditing) {
+    return String(state.bookmarkRemarkDraft?.[bookmarkId] || '').trim();
+  }
   return String(state.settings.bookmarkRemarks?.[bookmarkId] || '').trim();
 }
 
@@ -204,13 +208,21 @@ function renderBookmarksSection() {
   if (state.bookmarks.length === 0) return '';
   const groups = bookmarkDomainGroups();
   return `
-    <section class="bookmarks-section">
+    <section class="bookmarks-section ${state.bookmarksEditing ? 'is-editing' : ''}">
       <div class="section-head">
         <div>
           <p class="section-label">Bookmarks</p>
           <h2>快速书签</h2>
         </div>
-        <span class="section-note">${state.bookmarks.length} 个书签 · 按 ${groups.length} 个域名整理</span>
+        <div class="bookmark-toolbar">
+          <span class="section-note">${state.bookmarks.length} 个书签 · 按 ${groups.length} 个域名整理</span>
+          ${state.bookmarksEditing ? `
+            <button class="btn ghost" data-action="cancel-bookmark-edit">取消</button>
+            <button class="btn primary" data-action="save-bookmark-remarks">保存备注</button>
+          ` : `
+            <button class="btn ghost" data-action="edit-bookmarks">编辑备注</button>
+          `}
+        </div>
       </div>
       <div class="bookmark-grid">
         ${groups.map(group => renderBookmarkCard(group)).join('')}
@@ -238,7 +250,6 @@ function renderBookmarkCard(group) {
 function renderBookmarkItem(bookmark) {
   const domain = getDomain(bookmark.url);
   const remark = bookmarkRemark(bookmark.id);
-  const isEditing = state.editingBookmarkId === String(bookmark.id);
   return `
     <div class="bookmark-item" title="${escapeHtml(bookmark.url)}">
       <button class="bookmark-open" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
@@ -248,13 +259,9 @@ function renderBookmarkItem(bookmark) {
           <small>${escapeHtml(remark ? bookmark.title : bookmark.folder)}</small>
         </span>
       </button>
-      ${isEditing ? `
+      ${state.bookmarksEditing ? `
         <input class="bookmark-remark is-editing" data-setting="bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(remark)}" placeholder="备注" aria-label="书签备注名" autofocus />
-      ` : `
-        <button class="bookmark-edit" data-action="edit-bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" title="${escapeHtml(remark || '设置备注')}">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.9 2.2 13.8 5 6.1 12.7 3 13.4l.7-3.1 7.2-8.1Zm1.1-1.1a1.4 1.4 0 0 1 2 0l.9.9a1.4 1.4 0 0 1 0 2l-.5.5-2.9-2.9.5-.5Z"/></svg>
-        </button>
-      `}
+      ` : ''}
     </div>
   `;
 }
@@ -608,13 +615,39 @@ async function applySmartGrouping() {
   await loadTabs();
 }
 
-async function changeBookmarkRemark(bookmarkId, value) {
-  const nextRemarks = { ...(state.settings.bookmarkRemarks || {}) };
-  const remark = String(value || '').trim();
-  if (remark) nextRemarks[String(bookmarkId)] = remark;
-  else delete nextRemarks[String(bookmarkId)];
+function editBookmarks() {
+  state = {
+    ...state,
+    bookmarksEditing: true,
+    bookmarkRemarkDraft: { ...(state.settings.bookmarkRemarks || {}) }
+  };
+  render();
+}
+
+function cancelBookmarkEdit() {
+  state = { ...state, bookmarksEditing: false, bookmarkRemarkDraft: {} };
+  render();
+}
+
+function changeBookmarkRemarkDraft(bookmarkId, value) {
+  const nextDraft = { ...(state.bookmarkRemarkDraft || {}) };
+  nextDraft[String(bookmarkId)] = value;
+  state = { ...state, bookmarkRemarkDraft: nextDraft };
+}
+
+async function saveBookmarkRemarks() {
+  const nextRemarks = {};
+  for (const [bookmarkId, value] of Object.entries(state.bookmarkRemarkDraft || {})) {
+    const remark = String(value || '').trim();
+    if (remark) nextRemarks[bookmarkId] = remark;
+  }
   await browserApi.saveSettings({ bookmarkRemarks: nextRemarks });
-  state = { ...state, editingBookmarkId: null, settings: { ...state.settings, bookmarkRemarks: nextRemarks } };
+  state = {
+    ...state,
+    bookmarksEditing: false,
+    bookmarkRemarkDraft: {},
+    settings: { ...state.settings, bookmarkRemarks: nextRemarks }
+  };
   render();
 }
 
@@ -705,7 +738,9 @@ app.addEventListener('click', async event => {
   if (action === 'cancel-smart-grouping') { state = { ...state, smartGroupDraft: null }; render(); }
   if (action === 'apply-smart-grouping') await applySmartGrouping();
   if (action === 'skip-smart-tab') skipSmartTab(Number(target.dataset.tabId));
-  if (action === 'edit-bookmark-remark') { state = { ...state, editingBookmarkId: String(target.dataset.bookmarkId) }; render(); app.querySelector(`[data-setting="bookmark-remark"][data-bookmark-id="${CSS.escape(String(target.dataset.bookmarkId))}"]`)?.focus(); }
+  if (action === 'edit-bookmarks') editBookmarks();
+  if (action === 'cancel-bookmark-edit') cancelBookmarkEdit();
+  if (action === 'save-bookmark-remarks') await saveBookmarkRemarks();
   if (action === 'toggle-tab') toggleTab(Number(target.dataset.tabId));
   if (action === 'clear-domain') requestClearDomain(target.dataset.domain);
   if (action === 'clear-duplicates') requestClearDuplicates(target.dataset.domain);
@@ -731,6 +766,9 @@ app.addEventListener('input', event => {
   if (target.dataset.setting === 'smart-new-title') {
     changeSmartNewTitle(Number(target.dataset.tabId), target.value);
   }
+  if (target.dataset.setting === 'bookmark-remark') {
+    changeBookmarkRemarkDraft(target.dataset.bookmarkId, target.value);
+  }
 });
 
 app.addEventListener('change', async event => {
@@ -740,7 +778,7 @@ app.addEventListener('change', async event => {
   if (target.dataset.setting === 'auto-grouping-enabled') await changeAutoGroupingEnabled(target.checked);
   if (target.dataset.setting === 'domain-auto-grouping') await changeDomainAutoGrouping(target.dataset.domain, target.checked);
   if (target.dataset.setting === 'smart-target') changeSmartTarget(Number(target.dataset.tabId), target.value);
-  if (target.dataset.setting === 'bookmark-remark') await changeBookmarkRemark(target.dataset.bookmarkId, target.value);
+  if (target.dataset.setting === 'bookmark-remark') changeBookmarkRemarkDraft(target.dataset.bookmarkId, target.value);
 });
 
 loadTabs();
