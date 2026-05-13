@@ -104,6 +104,11 @@ export const browserApi = {
     }
   },
 
+  async updateBookmark(bookmarkId, changes) {
+    if (!chrome.bookmarks?.update) return null;
+    return chrome.bookmarks.update(String(bookmarkId), changes);
+  },
+
   async getSettings() {
     const result = await chrome.storage.local.get({
       inactiveDays: 3,

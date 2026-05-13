@@ -140,6 +140,10 @@ function bookmarkDomainGroups() {
     .sort((a, b) => b.bookmarks.length - a.bookmarks.length || a.groupName.localeCompare(b.groupName));
 }
 
+function bookmarkGroupNames() {
+  return bookmarkDomainGroups().map(group => group.groupName);
+}
+
 function searchResults() {
   const query = state.searchQuery.trim().toLowerCase();
   if (!query) return { tabs: [], bookmarks: [] };
@@ -263,7 +267,11 @@ function renderBookmarkCard(group) {
     <article class="bookmark-card">
       <div class="bookmark-card-head">
         <div>
-          <h3>${escapeHtml(group.groupName)}</h3>
+          ${state.bookmarksEditing ? `
+            <input class="bookmark-group-title" data-setting="bookmark-group-title" data-group-name="${escapeHtml(group.groupName)}" value="${escapeHtml(group.groupName)}" aria-label="书签分组标题" />
+          ` : `
+            <h3>${escapeHtml(group.groupName)}</h3>
+          `}
           <p>${group.bookmarks.length} 个链接</p>
         </div>
       </div>
@@ -279,6 +287,9 @@ function renderBookmarkItem(bookmark) {
   const remark = bookmarkRemark(bookmark.id);
   const title = bookmarkTitle(bookmark);
   const groupName = bookmarkGroupName(bookmark);
+  const groupOptions = bookmarkGroupNames()
+    .map(name => `<option value="${escapeHtml(name)}" ${name === groupName ? 'selected' : ''}>${escapeHtml(name)}</option>`)
+    .join('');
   return `
     <div class="bookmark-item" title="${escapeHtml(bookmark.url)}">
       <button class="bookmark-open" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
@@ -291,7 +302,9 @@ function renderBookmarkItem(bookmark) {
       ${state.bookmarksEditing ? `
         <div class="bookmark-edit-fields">
           <input data-setting="bookmark-title" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(title)}" placeholder="标题" aria-label="书签标题" />
-          <input data-setting="bookmark-group" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(groupName)}" placeholder="分组" aria-label="书签分组" />
+          <select data-setting="bookmark-group" data-bookmark-id="${escapeHtml(bookmark.id)}" aria-label="书签分组">
+            ${groupOptions}
+          </select>
           <input data-setting="bookmark-remark" data-bookmark-id="${escapeHtml(bookmark.id)}" value="${escapeHtml(remark)}" placeholder="备注" aria-label="书签备注" />
           <button class="link-button danger" data-action="delete-bookmark-draft" data-bookmark-id="${escapeHtml(bookmark.id)}">删除</button>
         </div>
@@ -689,6 +702,26 @@ function changeBookmarkMetaDraft(bookmarkId, key, value) {
   };
 }
 
+function renameBookmarkGroupDraft(oldGroupName, newGroupName) {
+  const nextGroupName = String(newGroupName || '').trim();
+  if (!nextGroupName) return;
+  const nextDraft = { ...state.bookmarkMetaDraft };
+  for (const bookmark of state.bookmarks) {
+    const id = String(bookmark.id);
+    if (state.bookmarkDeleteDraft.has(id)) continue;
+    const current = nextDraft[id] || {
+      title: bookmark.title || '',
+      group: getDomain(bookmark.url),
+      remark: ''
+    };
+    if (String(current.group || getDomain(bookmark.url)).trim() === oldGroupName) {
+      nextDraft[id] = { ...current, group: nextGroupName };
+    }
+  }
+  state = { ...state, bookmarkMetaDraft: nextDraft };
+  render();
+}
+
 function deleteBookmarkDraft(bookmarkId) {
   const nextDeleted = new Set(state.bookmarkDeleteDraft);
   nextDeleted.add(String(bookmarkId));
@@ -719,19 +752,26 @@ async function saveBookmarkEdits() {
     const group = String(draft.group || '').trim();
     const remark = String(draft.remark || '').trim();
     const meta = {};
-    if (title && title !== bookmark.title) meta.title = title;
     if (group && group !== getDomain(bookmark.url)) meta.group = group;
     if (remark) {
       meta.remark = remark;
       nextRemarks[id] = remark;
     }
     if (Object.keys(meta).length > 0) nextMeta[id] = meta;
+    if (title && title !== bookmark.title) {
+      await browserApi.updateBookmark(id, { title });
+    }
   }
   await browserApi.saveSettings({ bookmarkMeta: nextMeta, bookmarkRemarks: nextRemarks });
   state = {
     ...state,
     bookmarksEditing: false,
-    bookmarks: state.bookmarks.filter(bookmark => !state.bookmarkDeleteDraft.has(String(bookmark.id))),
+    bookmarks: state.bookmarks
+      .filter(bookmark => !state.bookmarkDeleteDraft.has(String(bookmark.id)))
+      .map(bookmark => {
+        const title = String(state.bookmarkMetaDraft?.[bookmark.id]?.title || '').trim();
+        return title ? { ...bookmark, title } : bookmark;
+      }),
     bookmarkMetaDraft: {},
     bookmarkDeleteDraft: new Set(),
     settings: { ...state.settings, bookmarkMeta: nextMeta, bookmarkRemarks: nextRemarks }
@@ -862,9 +902,6 @@ app.addEventListener('input', event => {
   if (target.dataset.setting === 'bookmark-title') {
     changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
   }
-  if (target.dataset.setting === 'bookmark-group') {
-    changeBookmarkMetaDraft(target.dataset.bookmarkId, 'group', target.value);
-  }
 });
 
 app.addEventListener('change', async event => {
@@ -876,7 +913,8 @@ app.addEventListener('change', async event => {
   if (target.dataset.setting === 'smart-target') changeSmartTarget(Number(target.dataset.tabId), target.value);
   if (target.dataset.setting === 'bookmark-remark') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'remark', target.value);
   if (target.dataset.setting === 'bookmark-title') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
-  if (target.dataset.setting === 'bookmark-group') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'group', target.value);
+  if (target.dataset.setting === 'bookmark-group') { changeBookmarkMetaDraft(target.dataset.bookmarkId, 'group', target.value); render(); }
+  if (target.dataset.setting === 'bookmark-group-title') renameBookmarkGroupDraft(target.dataset.groupName, target.value);
 });
 
 loadTabs();

@@ -383,7 +383,8 @@ h1 {
   padding: 10px 11px 5px;
 }
 
-.bookmark-card h3 {
+.bookmark-card h3,
+.bookmark-group-title {
   margin: 0 0 3px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -391,6 +392,16 @@ h1 {
   color: var(--ink);
   font-size: 12px;
   font-weight: 460;
+}
+
+.bookmark-group-title {
+  width: 100%;
+  height: 26px;
+  border: 1px solid rgba(42, 35, 24, 0.08);
+  border-radius: 8px;
+  outline: 0;
+  padding: 0 8px;
+  background: rgba(255, 255, 252, 0.72);
 }
 
 .bookmark-card p {
@@ -482,7 +493,8 @@ h1 {
   align-items: center;
 }
 
-.bookmark-edit-fields input {
+.bookmark-edit-fields input,
+.bookmark-edit-fields select {
   min-width: 0;
   height: 25px;
   border: 1px solid rgba(42, 35, 24, 0.08);
@@ -494,7 +506,9 @@ h1 {
   font-size: 11px;
 }
 
-.bookmark-edit-fields input:focus {
+.bookmark-edit-fields input:focus,
+.bookmark-edit-fields select:focus,
+.bookmark-group-title:focus {
   border-color: rgba(34, 87, 122, 0.28);
   color: var(--ink);
 }
