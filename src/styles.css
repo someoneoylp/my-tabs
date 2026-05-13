@@ -223,8 +223,10 @@ h1 {
 }
 
 .tab-search {
+  position: relative;
   width: min(720px, 100%);
   margin: -28px auto 0;
+  z-index: 20;
 }
 
 .tab-search input {
@@ -246,15 +248,27 @@ h1 {
 }
 
 .search-results {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  pointer-events: none;
 }
 
 .search-result-list,
 .search-empty {
   border: 1px solid rgba(42, 35, 24, 0.08);
   border-radius: 14px;
-  background: rgba(255, 255, 252, 0.82);
+  background: rgba(255, 255, 252, 0.96);
   overflow: hidden;
+  box-shadow: 0 18px 44px rgba(42, 35, 24, 0.12);
+  pointer-events: auto;
+}
+
+.search-result-list {
+  max-height: min(560px, calc(100vh - 240px));
+  overflow: auto;
 }
 
 .search-empty {
