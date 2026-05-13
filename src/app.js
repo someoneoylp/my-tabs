@@ -9,6 +9,7 @@ const actionManager = createActionManager(browserApi);
 let state = {
   status: 'loading',
   tabs: [],
+  bookmarks: [],
   analysis: null,
   settings: {
     inactiveDays: 3,
@@ -29,9 +30,9 @@ async function loadTabs() {
   state = { ...state, status: 'loading', confirm: null, selectedTabIds: new Set() };
   render();
   try {
-    const [tabs, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getSettings()]);
+    const [tabs, bookmarks, settings] = await Promise.all([browserApi.getAllTabs(), browserApi.getBookmarks(), browserApi.getSettings()]);
     const inactiveThresholdMs = settings.inactiveDays * 24 * 60 * 60 * 1000;
-    state = { ...state, status: 'ready', tabs, settings, analysis: analyzeTabs(tabs, { inactiveThresholdMs }) };
+    state = { ...state, status: 'ready', tabs, bookmarks, settings, analysis: analyzeTabs(tabs, { inactiveThresholdMs }) };
   } catch (error) {
     state = { ...state, status: 'error', error: error?.message || '无法读取 Tab' };
   }
@@ -85,29 +86,60 @@ function selectedCountForGroup(group) {
   return group.tabs.filter(tab => state.selectedTabIds.has(tab.id)).length;
 }
 
+function bookmarkById(id) {
+  return state.bookmarks.find(bookmark => bookmark.id === String(id));
+}
+
+function bookmarkFolderGroups() {
+  const groups = new Map();
+  for (const bookmark of state.bookmarks) {
+    const folder = bookmark.folder || 'Bookmarks';
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder).push(bookmark);
+  }
+  return [...groups.entries()]
+    .map(([folder, bookmarks]) => ({
+      folder,
+      bookmarks: bookmarks.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0))
+    }))
+    .sort((a, b) => b.bookmarks.length - a.bookmarks.length || a.folder.localeCompare(b.folder));
+}
+
 function searchResults() {
   const query = state.searchQuery.trim().toLowerCase();
-  if (!query) return [];
-  return state.tabs
+  if (!query) return { tabs: [], bookmarks: [] };
+  const tabs = state.tabs
     .filter(tab => `${tab.title || ''}\n${tab.url || ''}`.toLowerCase().includes(query))
     .sort((a, b) => Number(b.active) - Number(a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0))
-    .slice(0, 12);
+    .slice(0, 6);
+  const bookmarks = state.bookmarks
+    .filter(bookmark => `${bookmark.title || ''}\n${bookmark.url || ''}\n${bookmark.folder || ''}`.toLowerCase().includes(query))
+    .sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0))
+    .slice(0, 8);
+  return { tabs, bookmarks };
 }
 
 function renderSearchResults() {
   const query = state.searchQuery.trim();
   if (!query) return '';
   const results = searchResults();
-  if (results.length === 0) {
-    return '<div class="search-empty">没有找到匹配的 Tab</div>';
+  if (results.tabs.length === 0 && results.bookmarks.length === 0) {
+    return '<div class="search-empty">没有找到匹配的 Tab 或书签</div>';
   }
   return `
     <div class="search-result-list">
-      ${results.map(tab => `
+      ${results.tabs.map(tab => `
         <button class="search-result" data-action="focus-tab" data-tab-id="${tab.id}">
           <span class="search-title">${escapeHtml(tab.title)}</span>
-          <span class="search-meta">${escapeHtml(getDomain(tab.url))}${tab.pinned ? ' · 置顶' : ''}${tab.active ? ' · 当前' : ''}</span>
+          <span class="search-meta">Tab · ${escapeHtml(getDomain(tab.url))}${tab.pinned ? ' · 置顶' : ''}${tab.active ? ' · 当前' : ''}</span>
           <span class="search-url">${escapeHtml(tab.url)}</span>
+        </button>
+      `).join('')}
+      ${results.bookmarks.map(bookmark => `
+        <button class="search-result" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}">
+          <span class="search-title">${escapeHtml(bookmark.title)}</span>
+          <span class="search-meta">书签 · ${escapeHtml(bookmark.folder)}</span>
+          <span class="search-url">${escapeHtml(bookmark.url)}</span>
         </button>
       `).join('')}
     </div>
@@ -117,7 +149,7 @@ function renderSearchResults() {
 function renderSearchBox() {
   return `
     <section class="tab-search" aria-label="查找已打开的 Tab">
-      <input type="search" data-setting="tab-search" value="${escapeHtml(state.searchQuery)}" placeholder="查找已打开的 Tab，输入页面名称或 URL" autocomplete="off" />
+      <input type="search" data-setting="tab-search" value="${escapeHtml(state.searchQuery)}" placeholder="查找已打开的 Tab 或书签，输入名称或 URL" autocomplete="off" />
       <div class="search-results" data-search-results>${renderSearchResults()}</div>
     </section>
   `;
@@ -151,6 +183,54 @@ function renderHeader() {
       </section>
       ${renderSearchBox()}
     </header>
+  `;
+}
+
+function renderBookmarksSection() {
+  if (state.bookmarks.length === 0) return '';
+  const groups = bookmarkFolderGroups();
+  return `
+    <section class="bookmarks-section">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Bookmarks</p>
+          <h2>快速书签</h2>
+        </div>
+        <span class="section-note">${state.bookmarks.length} 个书签 · 按文件夹整理</span>
+      </div>
+      <div class="bookmark-grid">
+        ${groups.map(group => renderBookmarkCard(group)).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderBookmarkCard(group) {
+  return `
+    <article class="bookmark-card">
+      <div class="bookmark-card-head">
+        <div>
+          <h3>${escapeHtml(group.folder)}</h3>
+          <p>${group.bookmarks.length} 个链接</p>
+        </div>
+      </div>
+      <div class="bookmark-list">
+        ${group.bookmarks.map(bookmark => renderBookmarkItem(bookmark)).join('')}
+      </div>
+    </article>
+  `;
+}
+
+function renderBookmarkItem(bookmark) {
+  const domain = getDomain(bookmark.url);
+  return `
+    <button class="bookmark-item" data-action="open-bookmark" data-bookmark-id="${escapeHtml(bookmark.id)}" title="${escapeHtml(bookmark.url)}">
+      <span class="bookmark-mark">${escapeHtml(domain.slice(0, 1).toUpperCase())}</span>
+      <span class="bookmark-copy">
+        <span>${escapeHtml(bookmark.title)}</span>
+        <small>${escapeHtml(domain)}</small>
+      </span>
+    </button>
   `;
 }
 
@@ -294,7 +374,7 @@ function render() {
     return;
   }
   const groups = visibleDomainGroups();
-  app.innerHTML = `${renderHeader()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderConfirmDialog()}`;
+  app.innerHTML = `${renderHeader()}${renderBookmarksSection()}${renderDomainGrid(groups)}${renderRulesPanel()}${renderConfirmDialog()}`;
 }
 
 async function changeInactiveDays(days) {
@@ -403,6 +483,12 @@ async function focusTab(tabId) {
   await browserApi.focusTab(tabId);
 }
 
+async function openBookmark(bookmarkId) {
+  const bookmark = bookmarkById(bookmarkId);
+  if (!bookmark?.url) return;
+  await browserApi.openUrl(bookmark.url);
+}
+
 app.addEventListener('click', async event => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -420,6 +506,7 @@ app.addEventListener('click', async event => {
   if (action === 'cancel-confirm') { state = { ...state, confirm: null }; render(); }
   if (action === 'confirm-close') await confirmClose();
   if (action === 'focus-tab') await focusTab(Number(target.dataset.tabId));
+  if (action === 'open-bookmark') await openBookmark(target.dataset.bookmarkId);
 });
 
 app.addEventListener('input', event => {

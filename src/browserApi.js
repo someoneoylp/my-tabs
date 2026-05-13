@@ -2,6 +2,25 @@ import { DEFAULT_RULES_TEXT } from './defaultRules.js';
 import { DEFAULT_AUTO_GROUPING_ENABLED, DEFAULT_DISABLED_AUTO_GROUP_DOMAINS, normalizeAutoGroupingSettings } from './autoGroupingSettings.js';
 import { mergeRules, parseRulesText, serializeRules } from './groupingRules.js';
 
+function collectBookmarks(nodes, path = [], results = []) {
+  for (const node of nodes || []) {
+    if (node.url) {
+      results.push({
+        id: node.id,
+        title: node.title || node.url,
+        url: node.url,
+        folder: path.filter(Boolean).join(' / ') || 'Bookmarks',
+        dateAdded: node.dateAdded || 0
+      });
+      continue;
+    }
+
+    const nextPath = node.title ? [...path, node.title] : path;
+    collectBookmarks(node.children, nextPath, results);
+  }
+  return results;
+}
+
 export const browserApi = {
   async getAllTabs() {
     const tabs = await chrome.tabs.query({});
@@ -34,12 +53,26 @@ export const browserApi = {
     return chrome.tabs.create({ url, windowId, active });
   },
 
+  async openUrl(url) {
+    const currentTab = await chrome.tabs.getCurrent();
+    if (currentTab?.id !== undefined) {
+      return chrome.tabs.update(currentTab.id, { url, active: true });
+    }
+    return chrome.tabs.create({ url, active: true });
+  },
+
   async focusTab(tabId) {
     const tab = await chrome.tabs.update(tabId, { active: true });
     if (tab?.windowId !== undefined) {
       await chrome.windows.update(tab.windowId, { focused: true });
     }
     return tab;
+  },
+
+  async getBookmarks() {
+    if (!chrome.bookmarks?.getTree) return [];
+    const tree = await chrome.bookmarks.getTree();
+    return collectBookmarks(tree);
   },
 
   async getSettings() {
