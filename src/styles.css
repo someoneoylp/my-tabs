@@ -52,13 +52,13 @@ button {
 .page-header,
 .rules-section,
 .empty-board {
-  width: min(1360px, calc(100vw - 72px));
+  width: min(1360px, calc(100vw - 160px));
   margin-inline: auto;
 }
 
 .groups-section,
 .bookmarks-section {
-  width: min(1840px, calc(100vw - 72px));
+  width: min(1760px, calc(100vw - 160px));
   margin-inline: auto;
 }
 
@@ -1100,7 +1100,7 @@ h1 {
 
   .groups-section,
   .bookmarks-section {
-    width: min(100vw - 36px, 1840px);
+    width: min(100vw - 36px, 1760px);
   }
 
   .card-grid {
