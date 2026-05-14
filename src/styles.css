@@ -1086,7 +1086,7 @@ h1 {
 
 .smart-item-actions {
   display: grid;
-  grid-template-columns: 112px auto;
+  grid-template-columns: 104px auto auto;
   gap: 6px;
   align-items: center;
   opacity: 0.42;

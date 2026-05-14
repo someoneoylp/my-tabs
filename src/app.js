@@ -532,7 +532,7 @@ function renderSmartGroupPanel() {
             <p class="subtitle">先检查建议结果，可以改到已有分组、新建分组，或跳过某个页面。</p>
           </div>
           <div class="smart-panel-actions">
-            <button class="btn ghost" data-action="select-all-smart-groups" ${allGroupsSelected ? 'disabled' : ''}>全选</button>
+            <button class="btn ghost" data-action="toggle-all-smart-groups">${allGroupsSelected ? '全不选' : '全选'}</button>
             <button class="link-button" data-action="cancel-smart-grouping">关闭</button>
           </div>
         </div>
@@ -584,6 +584,7 @@ function renderSmartSuggestionItem(suggestion) {
           ${smartTargetOptions(tab, selectedKey)}
         </select>
         <button class="link-button" data-action="skip-smart-tab" data-tab-id="${tab.id}">跳过</button>
+        <button class="link-button danger" data-action="delete-smart-tab" data-tab-id="${tab.id}">删除</button>
       </div>
     </div>
   `;
@@ -702,13 +703,16 @@ function toggleSmartGroup(title, enabled) {
   render();
 }
 
-function selectAllSmartGroups() {
+function toggleAllSmartGroups() {
   if (!state.smartGroupDraft) return;
+  const groups = smartGroupedSuggestions();
+  const selectedGroups = smartSelectedGroupTitleSet();
+  const allSelected = groups.length > 0 && groups.every(group => selectedGroups.has(group.title));
   state = {
     ...state,
     smartGroupDraft: {
       ...state.smartGroupDraft,
-      selectedGroupTitles: smartGroupedSuggestions().map(group => group.title)
+      selectedGroupTitles: allSelected ? [] : groups.map(group => group.title)
     }
   };
   render();
@@ -733,6 +737,19 @@ function renameSmartGroupTitle(oldTitle, nextTitle) {
 
 function skipSmartTab(tabId) {
   updateSmartSuggestion(tabId, suggestion => ({ ...suggestion, targetMode: 'skip', targetGroupId: null }));
+  render();
+}
+
+async function deleteSmartTab(tabId) {
+  const tab = tabById(tabId);
+  if (!tab || tab.pinned) return;
+  await actionManager.closeTabs([tab], `删除「${tab.title || 'Tab'}」`);
+  const suggestions = state.smartGroupDraft?.suggestions.filter(suggestion => suggestion.tabId !== Number(tabId)) || [];
+  state = {
+    ...state,
+    tabs: state.tabs.filter(item => item.id !== Number(tabId)),
+    smartGroupDraft: state.smartGroupDraft ? { ...state.smartGroupDraft, suggestions } : null
+  };
   render();
 }
 
@@ -990,7 +1007,8 @@ app.addEventListener('click', async event => {
   if (action === 'cancel-smart-grouping') { state = { ...state, smartGroupDraft: null }; render(); }
   if (action === 'apply-smart-grouping') await applySmartGrouping();
   if (action === 'skip-smart-tab') skipSmartTab(Number(target.dataset.tabId));
-  if (action === 'select-all-smart-groups') selectAllSmartGroups();
+  if (action === 'toggle-all-smart-groups') toggleAllSmartGroups();
+  if (action === 'delete-smart-tab') await deleteSmartTab(Number(target.dataset.tabId));
   if (action === 'edit-bookmarks') editBookmarks();
   if (action === 'cancel-bookmark-edit') cancelBookmarkEdit();
   if (action === 'save-bookmark-edits') await saveBookmarkEdits();
