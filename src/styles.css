@@ -52,13 +52,13 @@ button {
 .page-header,
 .rules-section,
 .empty-board {
-  width: min(1360px, calc(100vw - 160px));
+  width: min(1360px, calc(100vw - 288px));
   margin-inline: auto;
 }
 
 .groups-section,
 .bookmarks-section {
-  width: min(1760px, calc(100vw - 160px));
+  width: min(1760px, calc(100vw - 288px));
   margin-inline: auto;
 }
 
