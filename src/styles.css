@@ -50,13 +50,13 @@ button {
 }
 
 .page-header,
-.groups-section,
 .rules-section,
 .empty-board {
   width: min(1360px, calc(100vw - 72px));
   margin-inline: auto;
 }
 
+.groups-section,
 .bookmarks-section {
   width: min(1840px, calc(100vw - 72px));
   margin-inline: auto;
@@ -1093,12 +1093,12 @@ h1 {
 
 @media (max-width: 980px) {
   .page-header,
-  .groups-section,
   .rules-section,
   .empty-board {
     width: min(100vw - 36px, 1360px);
   }
 
+  .groups-section,
   .bookmarks-section {
     width: min(100vw - 36px, 1840px);
   }
