@@ -468,6 +468,17 @@ function smartGroupedSuggestions() {
   return [...groups.entries()].map(([title, suggestions]) => ({ title, suggestions }));
 }
 
+function smartSelectedGroupTitleSet() {
+  const groupTitles = smartGroupedSuggestions().map(group => group.title);
+  if (!Array.isArray(state.smartGroupDraft.selectedGroupTitles)) return new Set(groupTitles);
+  const validTitles = new Set(groupTitles);
+  return new Set(state.smartGroupDraft.selectedGroupTitles.filter(title => validTitles.has(title)));
+}
+
+function isSmartGroupSelected(title) {
+  return smartSelectedGroupTitleSet().has(title);
+}
+
 function smartTargetKey(suggestion) {
   if (suggestion.targetMode === 'existing') return `existing:${suggestion.targetGroupId}`;
   return `new:${smartTargetLabel(suggestion)}`;
@@ -506,8 +517,10 @@ function smartTargetOptions(tab, selectedKey) {
 function renderSmartGroupPanel() {
   if (!state.smartGroupDraft) return '';
   const suggestions = state.smartGroupDraft.suggestions;
-  const activeSuggestions = suggestions.filter(suggestion => suggestion.targetMode !== 'skip');
   const groupedSuggestions = smartGroupedSuggestions();
+  const selectedGroups = smartSelectedGroupTitleSet();
+  const activeSuggestions = suggestions.filter(suggestion => suggestion.targetMode !== 'skip' && selectedGroups.has(smartTargetLabel(suggestion)));
+  const allGroupsSelected = groupedSuggestions.length > 0 && groupedSuggestions.every(group => selectedGroups.has(group.title));
 
   return `
     <div class="confirm-backdrop">
@@ -518,15 +531,22 @@ function renderSmartGroupPanel() {
             <h2>未分组 Tab 智能预览</h2>
             <p class="subtitle">先检查建议结果，可以改到已有分组、新建分组，或跳过某个页面。</p>
           </div>
-          <button class="link-button" data-action="cancel-smart-grouping">关闭</button>
+          <div class="smart-panel-actions">
+            <button class="btn ghost" data-action="select-all-smart-groups" ${allGroupsSelected ? 'disabled' : ''}>全选</button>
+            <button class="link-button" data-action="cancel-smart-grouping">关闭</button>
+          </div>
         </div>
         ${suggestions.length === 0 ? '<div class="empty-board compact">当前没有可自动分组的未分组 Tab。</div>' : `
           <div class="smart-card-grid">
             ${groupedSuggestions.map(group => `
-              <article class="smart-group-card">
+              <article class="smart-group-card ${isSmartGroupSelected(group.title) ? 'is-selected' : 'is-disabled'}">
                 <div class="smart-group-head">
+                  <label class="smart-group-toggle" title="开启后确认分组时生效">
+                    <input type="checkbox" data-setting="smart-group-enabled" data-group-title="${escapeHtml(group.title)}" ${isSmartGroupSelected(group.title) ? 'checked' : ''} />
+                    <span></span>
+                  </label>
                   <input class="smart-group-title" data-setting="smart-group-title" data-group-title="${escapeHtml(group.title)}" value="${escapeHtml(group.title)}" aria-label="分组名称" />
-                  <span>${group.suggestions.length} 个 Tab</span>
+                  <span class="smart-group-count">${group.suggestions.length} 个 Tab</span>
                 </div>
                 <div class="smart-url-list">
                   ${group.suggestions.map(suggestion => renderSmartSuggestionItem(suggestion)).join('')}
@@ -668,15 +688,46 @@ function changeSmartTarget(tabId, value) {
   render();
 }
 
+function toggleSmartGroup(title, enabled) {
+  if (!state.smartGroupDraft) return;
+  const selectedTitles = smartSelectedGroupTitleSet();
+  if (enabled) selectedTitles.add(title); else selectedTitles.delete(title);
+  state = {
+    ...state,
+    smartGroupDraft: {
+      ...state.smartGroupDraft,
+      selectedGroupTitles: [...selectedTitles]
+    }
+  };
+  render();
+}
+
+function selectAllSmartGroups() {
+  if (!state.smartGroupDraft) return;
+  state = {
+    ...state,
+    smartGroupDraft: {
+      ...state.smartGroupDraft,
+      selectedGroupTitles: smartGroupedSuggestions().map(group => group.title)
+    }
+  };
+  render();
+}
+
 function renameSmartGroupTitle(oldTitle, nextTitle) {
   const title = String(nextTitle || '').trim();
   if (!title || title === oldTitle) return;
+  const selectedTitles = smartSelectedGroupTitleSet();
   const suggestions = state.smartGroupDraft.suggestions.map(suggestion => {
     if (smartTargetLabel(suggestion) !== oldTitle) return suggestion;
     if (suggestion.targetMode === 'existing') return { ...suggestion, targetTitleOverride: title };
     return { ...suggestion, newGroupTitle: title };
   });
-  state = { ...state, smartGroupDraft: { ...state.smartGroupDraft, suggestions } };
+  if (selectedTitles.has(oldTitle)) {
+    selectedTitles.delete(oldTitle);
+    selectedTitles.add(title);
+  }
+  state = { ...state, smartGroupDraft: { ...state.smartGroupDraft, suggestions, selectedGroupTitles: [...selectedTitles] } };
   render();
 }
 
@@ -689,10 +740,11 @@ async function applySmartGrouping() {
   if (!state.smartGroupDraft) return;
   const existingGroups = new Map();
   const newGroups = new Map();
+  const selectedGroups = smartSelectedGroupTitleSet();
 
   for (const suggestion of state.smartGroupDraft.suggestions) {
     const tab = tabById(suggestion.tabId);
-    if (!tab || tab.pinned || suggestion.targetMode === 'skip') continue;
+    if (!tab || tab.pinned || suggestion.targetMode === 'skip' || !selectedGroups.has(smartTargetLabel(suggestion))) continue;
     if (suggestion.targetMode === 'existing' && suggestion.targetGroupId !== null) {
       const key = Number(suggestion.targetGroupId);
       if (!existingGroups.has(key)) existingGroups.set(key, { title: suggestion.targetTitleOverride || '', tabIds: [] });
@@ -938,6 +990,7 @@ app.addEventListener('click', async event => {
   if (action === 'cancel-smart-grouping') { state = { ...state, smartGroupDraft: null }; render(); }
   if (action === 'apply-smart-grouping') await applySmartGrouping();
   if (action === 'skip-smart-tab') skipSmartTab(Number(target.dataset.tabId));
+  if (action === 'select-all-smart-groups') selectAllSmartGroups();
   if (action === 'edit-bookmarks') editBookmarks();
   if (action === 'cancel-bookmark-edit') cancelBookmarkEdit();
   if (action === 'save-bookmark-edits') await saveBookmarkEdits();
@@ -978,6 +1031,7 @@ app.addEventListener('change', async event => {
   if (target.dataset.setting === 'auto-grouping-enabled') await changeAutoGroupingEnabled(target.checked);
   if (target.dataset.setting === 'domain-auto-grouping') await changeDomainAutoGrouping(target.dataset.domain, target.checked);
   if (target.dataset.setting === 'smart-target') changeSmartTarget(Number(target.dataset.tabId), target.value);
+  if (target.dataset.setting === 'smart-group-enabled') toggleSmartGroup(target.dataset.groupTitle, target.checked);
   if (target.dataset.setting === 'smart-group-title') renameSmartGroupTitle(target.dataset.groupTitle, target.value);
   if (target.dataset.setting === 'bookmark-title') changeBookmarkMetaDraft(target.dataset.bookmarkId, 'title', target.value);
   if (target.dataset.setting === 'bookmark-group') { changeBookmarkMetaDraft(target.dataset.bookmarkId, 'group', target.value); render(); }
