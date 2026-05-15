@@ -399,18 +399,20 @@ function renderDomainCard(group) {
     <article class="mini-card">
       <div class="mini-card-header">
         <div class="domain-mark">${escapeHtml(group.domain.slice(0, 1).toUpperCase())}</div>
-        <div class="domain-copy">
-          <h2>${escapeHtml(group.domain)}</h2>
-          <p>${group.tabs.length} 个 Tab · ${duplicateCount} 个重复${selectedCount ? ` · 已选 ${selectedCount}` : ''}</p>
-        </div>
-        <div class="card-actions">
-          <label class="domain-toggle" title="${escapeHtml(group.domain)} 自动匹配">
-            <input type="checkbox" data-setting="domain-auto-grouping" data-domain="${escapeHtml(group.domain)}" ${domainAutoGroupingEnabled ? 'checked' : ''} ${state.settings.autoGroupingEnabled ? '' : 'disabled'} />
-            <span>自动</span>
-          </label>
-          <button class="link-button" data-action="clear-duplicates" data-domain="${escapeHtml(group.domain)}" ${duplicateCount === 0 ? 'disabled' : ''}>重复</button>
-          <button class="link-button" data-action="clear-inactive-domain" data-domain="${escapeHtml(group.domain)}" ${inactiveCount === 0 ? 'disabled' : ''}>${state.settings.inactiveDays}天未开</button>
-          <button class="link-button danger" data-action="clear-domain" data-domain="${escapeHtml(group.domain)}">全部</button>
+        <div class="domain-panel">
+          <div class="domain-copy">
+            <h2>${escapeHtml(group.domain)}</h2>
+            <p>${group.tabs.length} 个 Tab · ${duplicateCount} 个重复${selectedCount ? ` · 已选 ${selectedCount}` : ''}</p>
+          </div>
+          <div class="card-actions">
+            <label class="domain-toggle" title="${escapeHtml(group.domain)} 自动匹配">
+              <input type="checkbox" data-setting="domain-auto-grouping" data-domain="${escapeHtml(group.domain)}" ${domainAutoGroupingEnabled ? 'checked' : ''} ${state.settings.autoGroupingEnabled ? '' : 'disabled'} />
+              <span>自动</span>
+            </label>
+            <button class="link-button" data-action="clear-duplicates" data-domain="${escapeHtml(group.domain)}" ${duplicateCount === 0 ? 'disabled' : ''}>重复</button>
+            <button class="link-button" data-action="clear-inactive-domain" data-domain="${escapeHtml(group.domain)}" ${inactiveCount === 0 ? 'disabled' : ''}>${state.settings.inactiveDays}天未开</button>
+            <button class="link-button danger" data-action="clear-domain" data-domain="${escapeHtml(group.domain)}">全部</button>
+          </div>
         </div>
       </div>
 
